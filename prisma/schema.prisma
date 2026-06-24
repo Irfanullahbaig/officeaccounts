@@ -1,0 +1,656 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  super_admin
+  admin
+  finance_manager
+  employee
+  viewer
+}
+
+enum UserStatus {
+  active
+  inactive
+  suspended
+}
+
+enum EmployeeStatus {
+  active
+  inactive
+  terminated
+  on_leave
+}
+
+enum PayrollStatus {
+  pending
+  paid
+  cancelled
+}
+
+enum SavingsType {
+  fixed
+  percentage
+  manual
+}
+
+enum SavingsTxType {
+  contribution
+  deposit
+  withdrawal
+  payroll_deduction
+}
+
+enum CommissionStatus {
+  pending
+  approved
+  paid
+  cancelled
+}
+
+enum InterestType {
+  daily_diminishing
+  monthly_diminishing
+  flat
+}
+
+enum LoanStatus {
+  active
+  paid
+  defaulted
+  cancelled
+}
+
+enum LoanTransactionType {
+  loan_created
+  interest_accrued
+  payment
+  payment_reversal
+  adjustment
+  loan_closed
+}
+
+enum RepaymentMethod {
+  payroll_deduction
+  manual
+  lump_sum
+}
+
+enum ExpenseCategory {
+  salaries
+  office_rent
+  marketing
+  utilities
+  equipment
+  software
+  miscellaneous
+}
+
+enum PaymentMethod {
+  bank_transfer
+  cash
+  cheque
+  card
+  other
+}
+
+enum CurrencyCode {
+  PKR
+  USD
+  EUR
+  GBP
+  AED
+}
+
+enum InterestMode {
+  daily
+  monthly
+}
+
+enum ProjectIncomeStatus {
+  received
+  refunded
+}
+
+enum FinancialTransactionType {
+  project_income
+  company_share
+  freelancer_share
+  savings_deposit
+  loan_payment
+  lead_commission
+  co_lead_commission
+  manual_adjustment
+  withdrawal
+  refund
+}
+
+enum CommissionRole {
+  lead
+  co_lead
+}
+
+model AllowedUser {
+  id               String     @id @default(cuid())
+  email            String     @unique
+  passwordHash     String     @map("password_hash")
+  role             UserRole   @default(employee)
+  status           UserStatus @default(active)
+  employeeId       String?    @unique @map("employee_id")
+  invitedById      String?    @map("invited_by_id")
+  twoFactorEnabled Boolean    @default(false) @map("two_factor_enabled")
+  twoFactorSecret  String?    @map("two_factor_secret")
+  lastLoginAt      DateTime?  @map("last_login_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  employee  Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  invitedBy AllowedUser?  @relation("UserInvites", fields: [invitedById], references: [id])
+  invites   AllowedUser[] @relation("UserInvites")
+  roleAssignments UserRoleAssignment[]
+
+  @@map("allowed_users")
+}
+
+model Employee {
+  id                String         @id @default(cuid())
+  employeeCode      String         @unique @map("employee_code")
+  fullName          String         @map("full_name")
+  email             String         @unique
+  phone             String?
+  department        String?
+  designation       String?
+  joiningDate       DateTime       @map("joining_date")
+  baseSalary        Float          @default(0) @map("base_salary")
+  status            EmployeeStatus @default(active)
+  role              UserRole       @default(employee)
+  bankName          String?        @map("bank_name")
+  bankAccountNumber String?        @map("bank_account_number")
+  bankRoutingNumber String?        @map("bank_routing_number")
+  totalLifetimeEarnings       Float    @default(0) @map("total_lifetime_earnings")
+  totalCompanyShareGenerated  Float    @default(0) @map("total_company_share_generated")
+  totalFreelancerShareReceived Float   @default(0) @map("total_freelancer_share_received")
+  currentLoanBalance          Float    @default(0) @map("current_loan_balance")
+  totalSavings                Float    @default(0) @map("total_savings")
+  totalLeadCommissions        Float    @default(0) @map("total_lead_commissions")
+  totalCoLeadCommissions      Float    @default(0) @map("total_co_lead_commissions")
+  netAvailableBalance         Float    @default(0) @map("net_available_balance")
+  leadCommissionWallet        Float    @default(0) @map("lead_commission_wallet")
+  coLeadCommissionWallet      Float    @default(0) @map("co_lead_commission_wallet")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  allowedUser         AllowedUser?
+  payrolls            Payroll[]
+  savingsAccount      SavingsAccount?
+  savingsTransactions SavingsTransaction[]
+  loans               Loan[]
+  leadCommissions     LeadCommission[]
+  coLeadCommissions   CoLeadCommission[]
+  projects            Project[]
+  incomeEntries       IncomeEntry[]
+  commissionAssignments CommissionAssignment[]
+  financialTransactions FinancialTransaction[]
+  loanPayments        LoanPayment[]
+
+  @@map("employees")
+}
+
+model Payroll {
+  id                  String        @id @default(cuid())
+  employeeId          String        @map("employee_id")
+  periodMonth         Int           @map("period_month")
+  periodYear          Int           @map("period_year")
+  baseSalary          Float         @default(0) @map("base_salary")
+  bonuses             Float         @default(0)
+  commissions         Float         @default(0)
+  deductions          Float         @default(0)
+  loanRecovery        Float         @default(0) @map("loan_recovery")
+  savingsContribution Float         @default(0) @map("savings_contribution")
+  finalSalary         Float         @default(0) @map("final_salary")
+  status              PayrollStatus @default(pending)
+  paidAt              DateTime?     @map("paid_at")
+  notes               String?
+  createdByEmail      String?       @map("created_by_email")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  employee       Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  items          PayrollItem[]
+  loanRepayments LoanRepayment[]
+
+  @@unique([employeeId, periodMonth, periodYear])
+  @@map("payrolls")
+}
+
+model PayrollItem {
+  id            String   @id @default(cuid())
+  payrollId     String   @map("payroll_id")
+  itemType      String   @map("item_type")
+  description   String?
+  amount        Float
+  isAddition    Boolean  @default(true) @map("is_addition")
+  referenceId   String?  @map("reference_id")
+  referenceType String?  @map("reference_type")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  payroll Payroll @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+
+  @@map("payroll_items")
+}
+
+model SavingsAccount {
+  id              String      @id @default(cuid())
+  employeeId      String      @unique @map("employee_id")
+  savingsType     SavingsType @default(fixed) @map("savings_type")
+  fixedAmount     Float       @default(0) @map("fixed_amount")
+  percentageRate  Float       @default(0) @map("percentage_rate")
+  currentBalance  Float       @default(0) @map("current_balance")
+  isActive        Boolean     @default(true) @map("is_active")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  employee     Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  transactions SavingsTransaction[]
+
+  @@map("savings_accounts")
+}
+
+model SavingsTransaction {
+  id               String        @id @default(cuid())
+  savingsAccountId String        @map("savings_account_id")
+  employeeId       String        @map("employee_id")
+  transactionType  SavingsTxType @map("transaction_type")
+  amount           Float
+  balanceAfter     Float         @map("balance_after")
+  notes            String?
+  transactionDate  DateTime      @default(now()) @map("transaction_date")
+  createdByEmail   String?       @map("created_by_email")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  savingsAccount SavingsAccount @relation(fields: [savingsAccountId], references: [id], onDelete: Cascade)
+  employee       Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("savings_transactions")
+}
+
+model Loan {
+  id                 String          @id @default(cuid())
+  employeeId         String          @map("employee_id")
+  loanAmount         Float           @map("loan_amount")
+  interestRate       Float           @default(15) @map("interest_rate")
+  interestType       InterestType    @default(daily_diminishing) @map("interest_type")
+  loanDate           DateTime        @default(now()) @map("loan_date")
+  durationMonths     Int?            @map("duration_months")
+  repaymentMethod    RepaymentMethod @default(manual) @map("repayment_method")
+  monthlyInstallment Float?          @map("monthly_installment")
+  remainingPrincipal Float           @map("remaining_principal")
+  accruedInterest    Float           @default(0) @map("accrued_interest")
+  lastAccrualDate    DateTime?       @map("last_accrual_date")
+  totalInterestPaid  Float           @default(0) @map("total_interest_paid")
+  totalPrincipalPaid Float           @default(0) @map("total_principal_paid")
+  status             LoanStatus      @default(active)
+  closedAt           DateTime?       @map("closed_at")
+  notes              String?
+  createdByEmail     String?         @map("created_by_email")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  employee        Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  repayments      LoanRepayment[]
+  loanPayments    LoanPayment[]
+  interestEntries LoanInterestEntry[]
+  ledgerEntries   LoanLedgerEntry[]
+
+  @@map("loans")
+}
+
+model LoanLedgerEntry {
+  id                   String              @id @default(cuid())
+  loanId               String              @map("loan_id")
+  transactionDate      DateTime            @map("transaction_date")
+  transactionType      LoanTransactionType @map("transaction_type")
+  amount               Float               @default(0)
+  interestPortion      Float               @default(0) @map("interest_portion")
+  principalPortion     Float               @default(0) @map("principal_portion")
+  remainingPrincipal   Float               @map("remaining_principal")
+  accruedInterestAfter Float               @default(0) @map("accrued_interest_after")
+  remarks              String?
+  isReversed           Boolean             @default(false) @map("is_reversed")
+  reversalOfId         String?             @map("reversal_of_id")
+  createdByEmail       String?             @map("created_by_email")
+  createdAt            DateTime            @default(now()) @map("created_at")
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId, transactionDate])
+  @@map("loan_ledger_entries")
+}
+
+model LoanRepayment {
+  id                  String   @id @default(cuid())
+  loanId              String   @map("loan_id")
+  paymentDate         DateTime @default(now()) @map("payment_date")
+  amountPaid          Float    @map("amount_paid")
+  principalPaid       Float    @default(0) @map("principal_paid")
+  interestPaid        Float    @default(0) @map("interest_paid")
+  remainingPrincipal  Float    @map("remaining_principal")
+  remainingInterest   Float    @default(0) @map("remaining_interest")
+  paymentSource       String   @default("manual") @map("payment_source")
+  payrollId           String?  @map("payroll_id")
+  notes               String?
+  createdByEmail      String?  @map("created_by_email")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  loan    Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  payroll Payroll? @relation(fields: [payrollId], references: [id])
+
+  @@map("loan_repayments")
+}
+
+model LoanInterestEntry {
+  id               String   @id @default(cuid())
+  loanId           String   @map("loan_id")
+  entryDate        DateTime @map("entry_date")
+  principalBalance Float    @map("principal_balance")
+  dailyRate        Float    @map("daily_rate")
+  interestAmount   Float    @map("interest_amount")
+  accruedInterest  Float    @default(0) @map("accrued_interest")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@unique([loanId, entryDate])
+  @@map("loan_interest_entries")
+}
+
+model LeadCommission {
+  id                String           @id @default(cuid())
+  leadOwnerId       String           @map("lead_owner_id")
+  clientName        String           @map("client_name")
+  dealValue         Float            @map("deal_value")
+  commissionPercent Float            @map("commission_percent")
+  commissionAmount  Float            @map("commission_amount")
+  status            CommissionStatus @default(pending)
+  paymentDate       DateTime?        @map("payment_date")
+  notes             String?
+  createdByEmail    String?          @map("created_by_email")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  leadOwner Employee           @relation(fields: [leadOwnerId], references: [id], onDelete: Cascade)
+  coLeads   CoLeadCommission[]
+
+  @@map("lead_commissions")
+}
+
+model CoLeadCommission {
+  id                String           @id @default(cuid())
+  mainLeadId        String           @map("main_lead_id")
+  coLeadId          String           @map("co_lead_id")
+  clientName        String           @map("client_name")
+  dealValue         Float            @map("deal_value")
+  splitPercent      Float            @map("split_percent")
+  mainCommission    Float            @map("main_commission")
+  coLeadCommission  Float            @map("co_lead_commission")
+  status            CommissionStatus @default(pending)
+  paymentDate       DateTime?        @map("payment_date")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  mainLead LeadCommission @relation(fields: [mainLeadId], references: [id], onDelete: Cascade)
+  coLead   Employee       @relation(fields: [coLeadId], references: [id], onDelete: Cascade)
+
+  @@map("co_lead_commissions")
+}
+
+model Revenue {
+  id            String        @id @default(cuid())
+  clientName    String        @map("client_name")
+  projectName   String?       @map("project_name")
+  amount        Float
+  revenueDate   DateTime      @default(now()) @map("revenue_date")
+  paymentMethod PaymentMethod @default(bank_transfer) @map("payment_method")
+  invoiceNumber String?       @map("invoice_number")
+  notes         String?
+  createdByEmail String?      @map("created_by_email")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  @@map("revenues")
+}
+
+model Project {
+  id               String   @id @default(cuid())
+  employeeId       String   @map("employee_id")
+  name             String
+  clientName       String   @map("client_name")
+  projectType      String   @map("project_type")
+  currency         CurrencyCode @default(PKR)
+  totalValue       Float    @default(0) @map("total_value")
+  totalReceived    Float    @default(0) @map("total_received")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  incomeEntries    IncomeEntry[]
+
+  @@index([employeeId, clientName])
+  @@map("projects")
+}
+
+model IncomeEntry {
+  id                     String   @id @default(cuid())
+  employeeId             String   @map("employee_id")
+  projectId              String?  @map("project_id")
+  projectName            String   @map("project_name")
+  clientName             String   @map("client_name")
+  projectType            String   @map("project_type")
+  projectValue           Float    @map("project_value")
+  companySharePercent    Float    @default(30) @map("company_share_percent")
+  freelancerSharePercent Float    @default(70) @map("freelancer_share_percent")
+  companyShare           Float    @map("company_share")
+  freelancerShare        Float    @map("freelancer_share")
+  savingsContribution    Float    @default(0) @map("savings_contribution")
+  loanPayment            Float    @default(0) @map("loan_payment")
+  leadCommissionTotal    Float    @default(0) @map("lead_commission_total")
+  coLeadCommissionTotal  Float    @default(0) @map("co_lead_commission_total")
+  netPayout              Float    @map("net_payout")
+  currency               CurrencyCode @default(PKR)
+  paymentReceivedDate    DateTime @map("payment_received_date")
+  notes                  String?
+  status                 ProjectIncomeStatus @default(received)
+  createdByEmail         String?  @map("created_by_email")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  employee               Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project                Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  commissionAssignments  CommissionAssignment[]
+  financialTransactions  FinancialTransaction[]
+
+  @@index([employeeId, paymentReceivedDate])
+  @@map("income_entries")
+}
+
+model CommissionAssignment {
+  id             String   @id @default(cuid())
+  incomeEntryId  String   @map("income_entry_id")
+  employeeId     String   @map("employee_id")
+  role           CommissionRole
+  percent        Float
+  amount         Float
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  incomeEntry    IncomeEntry @relation(fields: [incomeEntryId], references: [id], onDelete: Cascade)
+  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([incomeEntryId, role])
+  @@map("commission_assignments")
+}
+
+model FinancialTransaction {
+  id                    String   @id @default(cuid())
+  employeeId            String?  @map("employee_id")
+  incomeEntryId         String?  @map("income_entry_id")
+  referenceId           String?  @map("reference_id")
+  type                  FinancialTransactionType
+  amount                Float
+  currency              CurrencyCode @default(PKR)
+  transactionDate       DateTime @default(now()) @map("transaction_date")
+  description           String?
+  metadata              String?
+  createdByEmail        String?  @map("created_by_email")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  employee              Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  incomeEntry           IncomeEntry? @relation(fields: [incomeEntryId], references: [id], onDelete: SetNull)
+
+  @@index([type, transactionDate])
+  @@map("financial_transactions")
+}
+
+model LoanPayment {
+  id              String   @id @default(cuid())
+  loanId          String   @map("loan_id")
+  employeeId      String   @map("employee_id")
+  incomeEntryId   String?  @map("income_entry_id")
+  amount          Float
+  paymentDate     DateTime @default(now()) @map("payment_date")
+  notes           String?
+  createdByEmail  String?  @map("created_by_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  loan            Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, paymentDate])
+  @@map("loan_payments")
+}
+
+model ReportSnapshot {
+  id            String   @id @default(cuid())
+  reportType    String   @map("report_type")
+  filters       String?
+  payload       String
+  createdByEmail String? @map("created_by_email")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("reports")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  permissions RolePermission[]
+  users       UserRoleAssignment[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id            String   @id @default(cuid())
+  roleId         String   @map("role_id")
+  permissionId   String   @map("permission_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  role           Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission     Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRoleAssignment {
+  id            String      @id @default(cuid())
+  userId         String      @map("user_id")
+  roleId         String      @map("role_id")
+  assignedAt     DateTime    @default(now()) @map("assigned_at")
+
+  user           AllowedUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("users")
+}
+
+model Expense {
+  id             String          @id @default(cuid())
+  category       ExpenseCategory
+  amount         Float
+  expenseDate    DateTime        @default(now()) @map("expense_date")
+  receiptUrl     String?         @map("receipt_url")
+  notes          String?
+  createdByEmail String?         @map("created_by_email")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("expenses")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userEmail  String?  @map("user_email")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  oldValue   String?  @map("old_value")
+  newValue   String?  @map("new_value")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model LoginActivity {
+  id            String   @id @default(cuid())
+  email         String
+  success       Boolean
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("login_activity")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userEmail String   @map("user_email")
+  title     String
+  message   String
+  type      String   @default("info")
+  isRead    Boolean  @default(false) @map("is_read")
+  link      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+model SystemSetting {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  value          String
+  updatedByEmail String?  @map("updated_by_email")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
