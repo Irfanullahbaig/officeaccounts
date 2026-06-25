@@ -43,7 +43,8 @@ Open [http://localhost:3000](http://localhost:3000)
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string (use Vercel Postgres in production) |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `POSTGRES_URL` / `POSTGRES_PRISMA_URL` | Auto-used if Vercel Postgres is connected |
 | `AUTH_SECRET` | Random secret for NextAuth sessions |
 | `NEXTAUTH_URL` | App URL (e.g. `https://your-app.vercel.app`) |
 | `DEFAULT_ADMIN_EMAIL` | Optional — defaults to `admin@northnine.pk` |

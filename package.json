@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "prisma generate && next dev",
-    "build": "node scripts/validate-env.mjs --build && prisma generate && next build",
-    "postinstall": "prisma generate",
+    "dev": "node scripts/prisma-generate.mjs && next dev",
+    "build": "node scripts/validate-env.mjs --build && node scripts/prisma-generate.mjs && next build",
+    "postinstall": "node scripts/prisma-generate.mjs",
     "start": "next start",
     "lint": "eslint",
     "db:push": "prisma db push",
