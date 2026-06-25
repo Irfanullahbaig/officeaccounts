@@ -43,9 +43,11 @@ export default function LoginPage() {
 
     if (result?.error) {
       setError(
-        result.error === "CredentialsSignin"
-          ? ACCESS_DENIED_MESSAGE
-          : "Invalid email or password."
+        result.error === "Configuration"
+          ? "Server configuration error. Ensure AUTH_SECRET, DATABASE_URL, and NEXTAUTH_URL are set on Vercel."
+          : result.error === "CredentialsSignin"
+            ? ACCESS_DENIED_MESSAGE
+            : "Invalid email or password."
       );
       setLoading(false);
       return;

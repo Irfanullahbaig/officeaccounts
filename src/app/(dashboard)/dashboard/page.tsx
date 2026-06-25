@@ -16,7 +16,7 @@ import { formatCurrency } from "@/lib/utils/format";
 import { requireRole } from "@/lib/auth/session";
 
 export default async function DashboardPage() {
-  await requireRole(["super_admin", "finance_manager"]);
+  await requireRole(["super_admin", "admin", "finance_manager"]);
 
   const [stats, charts] = await Promise.all([
     getDashboardStats(),

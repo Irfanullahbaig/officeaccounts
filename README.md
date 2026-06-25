@@ -5,7 +5,7 @@ Private company finance platform for payroll, loans, savings, commissions, reven
 ## Tech Stack
 
 - **Next.js 15+** (App Router) · TypeScript · Tailwind CSS · Shadcn UI
-- **Prisma ORM** · SQLite (local) / PostgreSQL (production)
+- **Prisma ORM** · PostgreSQL (local + production)
 - **NextAuth.js** · Credentials-based auth with RBAC
 - **React Hook Form** · Zod · Recharts
 
@@ -29,7 +29,8 @@ Private company finance platform for payroll, loans, savings, commissions, reven
 ```bash
 npm install
 cp .env.example .env
-npm run db:migrate
+docker compose up -d
+npx prisma db push
 npm run db:seed
 npm run dev
 ```
@@ -42,9 +43,21 @@ Open [http://localhost:3000](http://localhost:3000)
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | SQLite: `file:./dev.db` or PostgreSQL connection string |
+| `DATABASE_URL` | PostgreSQL connection string (use Vercel Postgres in production) |
 | `AUTH_SECRET` | Random secret for NextAuth sessions |
-| `NEXTAUTH_URL` | App URL (e.g. `http://localhost:3000`) |
+| `NEXTAUTH_URL` | App URL (e.g. `https://your-app.vercel.app`) |
+| `DEFAULT_ADMIN_EMAIL` | Optional — defaults to `admin@northnine.pk` |
+| `DEFAULT_ADMIN_PASSWORD` | Optional — defaults to `N9Accounts@123` |
+
+## Vercel Deployment
+
+1. Create a **Vercel Postgres** database (or connect Neon/Supabase).
+2. Set these environment variables in Vercel → Project → Settings → Environment Variables:
+   - `DATABASE_URL` — Postgres connection string
+   - `AUTH_SECRET` — run `openssl rand -base64 32`
+   - `NEXTAUTH_URL` — your production URL (e.g. `https://officeaccounts.vercel.app`)
+3. Redeploy. The build will create tables, seed the admin user, and login will work with:
+   - `admin@northnine.pk` / `N9Accounts@123`
 
 ## Security
 
