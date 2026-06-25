@@ -1,35 +1,29 @@
 import { NextResponse } from "next/server";
 import { execSync } from "node:child_process";
 import { ensureDefaultAdmin } from "@/lib/auth/bootstrap-admin";
+import { getAuthSecret } from "@/lib/env";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get("secret");
-  const expectedSecret =
-    process.env.SETUP_SECRET ?? process.env.AUTH_SECRET ?? "n9-setup";
-
-  if (!secret || secret !== expectedSecret) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
   try {
-    execSync("node scripts/configure-prisma.mjs", { stdio: "inherit" });
-    execSync("npx prisma generate", { stdio: "inherit" });
+    const expectedSecret = process.env.SETUP_SECRET ?? getAuthSecret();
 
-    const databaseUrl = process.env.DATABASE_URL ?? "";
-    if (!databaseUrl) {
+    if (!secret || secret !== expectedSecret) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (!process.env.DATABASE_URL) {
       return NextResponse.json(
         { error: "DATABASE_URL is not configured on Vercel" },
         { status: 500 }
       );
     }
 
-    if (databaseUrl.startsWith("postgres")) {
-      execSync("npx prisma db push --skip-generate", { stdio: "inherit" });
-    } else {
-      execSync("npx prisma migrate deploy", { stdio: "inherit" });
-    }
-
+    execSync("npx prisma db push --skip-generate", { stdio: "inherit" });
     await ensureDefaultAdmin();
 
     return NextResponse.json({

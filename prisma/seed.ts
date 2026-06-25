@@ -1,10 +1,10 @@
 import { PrismaClient } from "@prisma/client";
-import { ensureDefaultAdmin } from "../src/lib/auth/bootstrap-admin";
+import { ensureDefaultAdminOnClient } from "../src/lib/auth/admin-credentials";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  await ensureDefaultAdmin();
+  await ensureDefaultAdminOnClient(prisma);
 
   const settings = [
     { key: "company_name", value: JSON.stringify("N9Accounts") },
@@ -26,5 +26,8 @@ async function main() {
 }
 
 main()
-  .catch(console.error)
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  })
   .finally(() => prisma.$disconnect());

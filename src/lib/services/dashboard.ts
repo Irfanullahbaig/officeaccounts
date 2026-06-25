@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import type { DashboardStats } from "@/types/database";
 
 export async function getDashboardStats(): Promise<DashboardStats> {

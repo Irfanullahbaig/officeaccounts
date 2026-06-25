@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth/session";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { formatCurrency, cnStatusColor, getMonthName } from "@/lib/utils/format";

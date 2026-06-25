@@ -1,7 +1,7 @@
 "use server";
 
 import { auth } from "@/auth";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import type { AuthUser, UserRole } from "@/types/database";
 
 export async function getCurrentUser(): Promise<AuthUser | null> {

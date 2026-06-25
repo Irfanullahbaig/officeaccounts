@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { requireRole, getCurrentUser, createAuditLog } from "@/lib/auth/session";
 import { calculatePayrollFinalSalary } from "@/lib/loans/calculator";
 import { recordLoanPayment } from "@/lib/actions/loans";

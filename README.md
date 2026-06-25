@@ -53,14 +53,15 @@ Open [http://localhost:3000](http://localhost:3000)
 
 1. Create a **Postgres** database (Vercel Postgres, Neon, or Supabase).
 2. Set these environment variables in Vercel → Project → Settings → Environment Variables:
-   - `DATABASE_URL` — Postgres connection string
+   - `DATABASE_URL` — Postgres connection string (`postgresql://...`)
    - `AUTH_SECRET` — run `openssl rand -base64 32`
    - `NEXTAUTH_URL` — your production URL (e.g. `https://your-app.vercel.app`)
-3. Redeploy. The build creates tables and seeds the admin user.
-4. If login still fails after deploy, open once:
+3. Redeploy. The build only runs `prisma generate` and `next build` (no database access during build).
+4. After the first successful deploy, initialize the database once:
    `https://your-app.vercel.app/api/setup?secret=YOUR_AUTH_SECRET`
-   This re-initializes the database and admin account.
 5. Sign in with `admin@northnine.pk` / `N9Accounts@123`
+
+For local database setup after deploy, run `npm run db:push && npm run db:seed`.
 
 ## Security
 

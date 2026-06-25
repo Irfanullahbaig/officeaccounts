@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { authConfig } from "@/auth.config";
 import type { UserRole } from "@/types/database";
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";

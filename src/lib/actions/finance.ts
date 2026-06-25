@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { requireRole, createAuditLog, getCurrentUser } from "@/lib/auth/session";
 import {
   accrueInterestForPeriod,
