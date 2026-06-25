@@ -36,7 +36,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
-**Default login:** `admin@company.com` / `admin123`
+**Default login:** `admin@northnine.pk` / `N9Accounts@123`
 
 ## Environment Variables
 

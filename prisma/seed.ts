@@ -4,17 +4,25 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash("admin123", 12);
+  const passwordHash = await bcrypt.hash("N9Accounts@123", 12);
 
   await prisma.allowedUser.upsert({
-    where: { email: "admin@company.com" },
-    update: {},
-    create: {
-      email: "admin@company.com",
+    where: { email: "admin@northnine.pk" },
+    update: {
       passwordHash,
       role: "super_admin",
       status: "active",
     },
+    create: {
+      email: "admin@northnine.pk",
+      passwordHash,
+      role: "super_admin",
+      status: "active",
+    },
+  });
+
+  await prisma.allowedUser.deleteMany({
+    where: { email: "admin@company.com" },
   });
 
   const settings = [
@@ -33,7 +41,7 @@ async function main() {
   }
 
   console.log("Seed complete.");
-  console.log("Login: admin@company.com / admin123");
+  console.log("Login: admin@northnine.pk / N9Accounts@123");
 }
 
 main()
