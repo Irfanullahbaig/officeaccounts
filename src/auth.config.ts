@@ -3,10 +3,11 @@ import type { UserRole } from "@/types/database";
 
 export const authConfig = {
   trustHost: true,
+  secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt", maxAge: 60 * 60 * 8 },
   pages: {
     signIn: "/login",
-    error: "/access-denied",
+    error: "/login",
   },
   providers: [],
   callbacks: {

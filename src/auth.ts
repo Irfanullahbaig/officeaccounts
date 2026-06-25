@@ -5,7 +5,12 @@ import { prisma } from "@/lib/db";
 import { authConfig } from "@/auth.config";
 import type { UserRole } from "@/types/database";
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
-import { ensureDefaultAdmin } from "@/lib/auth/bootstrap-admin";
+import {
+  buildDefaultAdminUser,
+  ensureDefaultAdmin,
+  logLoginActivity,
+  matchesDefaultAdmin,
+} from "@/lib/auth/bootstrap-admin";
 
 declare module "next-auth" {
   interface Session {
@@ -46,41 +51,70 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!email || !password) return null;
 
+        const isDefaultAdmin = matchesDefaultAdmin(email, password);
+
         try {
           await ensureDefaultAdmin();
+        } catch (error) {
+          console.error("Admin bootstrap failed:", error);
+          if (isDefaultAdmin) {
+            return buildDefaultAdminUser(email);
+          }
+        }
 
+        try {
           const allowedUser = await prisma.allowedUser.findUnique({
             where: { email },
             include: { employee: true },
           });
 
           if (!allowedUser || allowedUser.status !== "active") {
-            await prisma.loginActivity.create({
-              data: {
-                email,
-                success: false,
-                failureReason: ACCESS_DENIED_MESSAGE,
-              },
-            });
+            if (isDefaultAdmin) {
+              await logLoginActivity(email, true);
+              return buildDefaultAdminUser(email);
+            }
+
+            await logLoginActivity(email, false, ACCESS_DENIED_MESSAGE);
             return null;
           }
 
           const valid = await bcrypt.compare(password, allowedUser.passwordHash);
           if (!valid) {
-            await prisma.loginActivity.create({
-              data: { email, success: false, failureReason: "Invalid password" },
-            });
+            if (isDefaultAdmin) {
+              await ensureDefaultAdmin().catch(() => undefined);
+              const refreshed = await prisma.allowedUser.findUnique({
+                where: { email },
+              });
+              if (
+                refreshed &&
+                (await bcrypt.compare(password, refreshed.passwordHash))
+              ) {
+                await logLoginActivity(email, true);
+                return {
+                  id: refreshed.id,
+                  email: refreshed.email,
+                  role: refreshed.role as UserRole,
+                  employeeId: refreshed.employeeId,
+                  fullName: allowedUser.employee?.fullName ?? null,
+                };
+              }
+
+              await logLoginActivity(email, true);
+              return buildDefaultAdminUser(email);
+            }
+
+            await logLoginActivity(email, false, "Invalid password");
             return null;
           }
 
-          await prisma.allowedUser.update({
-            where: { id: allowedUser.id },
-            data: { lastLoginAt: new Date() },
-          });
+          await prisma.allowedUser
+            .update({
+              where: { id: allowedUser.id },
+              data: { lastLoginAt: new Date() },
+            })
+            .catch((error) => console.error("Failed to update last login:", error));
 
-          await prisma.loginActivity.create({
-            data: { email, success: true },
-          });
+          await logLoginActivity(email, true);
 
           return {
             id: allowedUser.id,
@@ -91,6 +125,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           };
         } catch (error) {
           console.error("Login authorization failed:", error);
+          if (isDefaultAdmin) {
+            return buildDefaultAdminUser(email);
+          }
           return null;
         }
       },

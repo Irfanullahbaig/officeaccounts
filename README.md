@@ -51,13 +51,16 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Vercel Deployment
 
-1. Create a **Vercel Postgres** database (or connect Neon/Supabase).
+1. Create a **Postgres** database (Vercel Postgres, Neon, or Supabase).
 2. Set these environment variables in Vercel → Project → Settings → Environment Variables:
    - `DATABASE_URL` — Postgres connection string
    - `AUTH_SECRET` — run `openssl rand -base64 32`
-   - `NEXTAUTH_URL` — your production URL (e.g. `https://officeaccounts.vercel.app`)
-3. Redeploy. The build will create tables, seed the admin user, and login will work with:
-   - `admin@northnine.pk` / `N9Accounts@123`
+   - `NEXTAUTH_URL` — your production URL (e.g. `https://your-app.vercel.app`)
+3. Redeploy. The build creates tables and seeds the admin user.
+4. If login still fails after deploy, open once:
+   `https://your-app.vercel.app/api/setup?secret=YOUR_AUTH_SECRET`
+   This re-initializes the database and admin account.
+5. Sign in with `admin@northnine.pk` / `N9Accounts@123`
 
 ## Security
 

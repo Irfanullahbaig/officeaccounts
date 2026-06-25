@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_ROUTES = ["/login", "/access-denied", "/api/auth"];
+const PUBLIC_ROUTES = ["/login", "/access-denied", "/api/auth", "/api/setup"];
 
 export default auth((request) => {
   const { pathname } = request.nextUrl;

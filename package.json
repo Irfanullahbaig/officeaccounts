@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && node scripts/prepare-db.mjs && npm run db:seed && next build",
+    "dev": "node scripts/configure-prisma.mjs && prisma generate && next dev",
+    "build": "node scripts/configure-prisma.mjs && prisma generate && node scripts/prepare-db.mjs && npm run db:seed && next build",
+    "postinstall": "node scripts/configure-prisma.mjs && prisma generate",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "prisma migrate dev",

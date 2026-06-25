@@ -3,6 +3,10 @@ import { execSync } from "node:child_process";
 const databaseUrl = process.env.DATABASE_URL ?? "";
 
 if (!databaseUrl) {
+  if (process.env.VERCEL) {
+    console.error("DATABASE_URL is required on Vercel.");
+    process.exit(1);
+  }
   console.warn("DATABASE_URL is not set. Skipping database preparation.");
   process.exit(0);
 }

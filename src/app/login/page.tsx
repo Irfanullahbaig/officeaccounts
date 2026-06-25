@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -22,9 +22,29 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const authError = searchParams.get("error");
+    if (authError === "Configuration") {
+      setError(
+        "Server configuration error. Ensure AUTH_SECRET, DATABASE_URL, and NEXTAUTH_URL are set on Vercel."
+      );
+    } else if (authError === "CredentialsSignin") {
+      setError(ACCESS_DENIED_MESSAGE);
+    }
+  }, [searchParams]);
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -46,8 +66,8 @@ export default function LoginPage() {
         result.error === "Configuration"
           ? "Server configuration error. Ensure AUTH_SECRET, DATABASE_URL, and NEXTAUTH_URL are set on Vercel."
           : result.error === "CredentialsSignin"
-            ? ACCESS_DENIED_MESSAGE
-            : "Invalid email or password."
+            ? "Invalid email or password. Use admin@northnine.pk with your admin password."
+            : "Sign in failed. Please try again."
       );
       setLoading(false);
       return;
@@ -102,7 +122,7 @@ export default function LoginPage() {
               )}
               <div className="space-y-2">
                 <Label htmlFor="email">Company Email</Label>
-                <Input id="email" type="email" placeholder="you@company.com" {...form.register("email")} />
+                <Input id="email" type="email" placeholder="admin@northnine.pk" {...form.register("email")} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
