@@ -40,6 +40,20 @@ export function formatDatabaseError(error: unknown): string {
   if (error instanceof Error) {
     if (error.message === "Unauthorized") return "Your session expired. Please sign in again.";
     if (error.message === "Forbidden") return "You do not have permission to perform this action.";
+
+    const lower = error.message.toLowerCase();
+    if (
+      lower.includes("authentication failed") ||
+      lower.includes("provided database credentials") ||
+      error.name === "PrismaClientInitializationError"
+    ) {
+      return [
+        "Database login failed. Check DATABASE_URL in .env.local (local) or Vercel Environment Variables (production).",
+        "Use the Supabase pooler URL (port 6543) with username postgres.rzeouxflwqiprffkdccs and your database password.",
+        "Reset the password in Supabase → Project Settings → Database if needed.",
+      ].join(" ");
+    }
+
     return error.message;
   }
 
