@@ -82,9 +82,7 @@ export function normalizeSupabasePostgresUrl(url: string): string {
 }
 
 function getDatabaseUrlSourceOrder(): string[] {
-  if (process.env.VERCEL) {
-    return ["POSTGRES_PRISMA_URL", "DATABASE_URL", ...DATABASE_URL_ALIASES];
-  }
+  // Always prefer explicitly set DATABASE_URL (e.g. Vercel dashboard) over integration aliases.
   return ["DATABASE_URL", ...DATABASE_URL_ALIASES];
 }
 
@@ -101,6 +99,14 @@ export function normalizeDirectDatabaseEnv(): void {
 
     process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(candidate);
     return;
+  }
+
+  const pooled = trimUrl(process.env.DATABASE_URL);
+  if (isUsablePostgresUrl(pooled)) {
+    const derived = pooled
+      .replace(":6543/", ":5432/")
+      .replace(/\?pgbouncer=true/, "");
+    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(derived);
   }
 }
 

@@ -1,5 +1,7 @@
 export function getSupabaseUrl(): string | undefined {
-  return process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  if (!raw) return undefined;
+  return raw.replace(/\/rest\/v1\/?$/i, "").replace(/\/$/, "");
 }
 
 /** Supports publishable (sb_publishable_*) and legacy anon JWT keys. */

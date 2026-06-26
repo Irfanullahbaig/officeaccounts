@@ -76,13 +76,12 @@ export function normalizeDirectDatabaseEnv() {
     return process.env.DATABASE_URL_UNPOOLED;
   }
 
+  deriveUnpooledFromPooled();
   return trimUrl(process.env.DATABASE_URL_UNPOOLED);
 }
 
 export function normalizeDatabaseEnv() {
-  const order = process.env.VERCEL
-    ? ["POSTGRES_PRISMA_URL", "DATABASE_URL", ...DATABASE_URL_ALIASES]
-    : ["DATABASE_URL", ...DATABASE_URL_ALIASES];
+  const order = ["DATABASE_URL", ...DATABASE_URL_ALIASES];
 
   const seen = new Set();
   for (const key of order) {
@@ -101,6 +100,13 @@ export function normalizeDatabaseEnv() {
 
   normalizeDirectDatabaseEnv();
   return trimUrl(process.env.DATABASE_URL);
+}
+
+function deriveUnpooledFromPooled() {
+  const pooled = trimUrl(process.env.DATABASE_URL);
+  if (!isUsableDatabaseUrl(pooled) || !pooled.startsWith("postgres")) return;
+  const derived = pooled.replace(":6543/", ":5432/").replace(/\?pgbouncer=true/, "");
+  process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(derived);
 }
 
 const isBuild = process.argv.includes("--build");
