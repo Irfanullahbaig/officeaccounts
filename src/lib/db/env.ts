@@ -17,8 +17,21 @@ const DIRECT_URL_ALIASES = [
 
 let envNormalized = false;
 
+/** Strip whitespace and surrounding quotes copied from .env files into Vercel UI. */
+function unquoteEnv(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 function trimUrl(url: string | undefined): string | undefined {
-  const trimmed = url?.trim();
+  if (url === undefined) return undefined;
+  const trimmed = unquoteEnv(url);
   return trimmed || undefined;
 }
 
@@ -41,6 +54,21 @@ export function isPostgresDatabaseUrl(url: string | undefined): url is string {
 
 function isUsablePostgresUrl(url: string | undefined): url is string {
   return isPostgresDatabaseUrl(url);
+}
+
+export function isSupabasePostgresUrl(url: string): boolean {
+  return (
+    url.includes("pooler.supabase.com") ||
+    url.includes(".supabase.co") ||
+    /^postgres(?:ql)?:\/\/postgres\.[^@]+@/i.test(url)
+  );
+}
+
+/** Skip Vercel/Neon integration URLs when this app is configured for Supabase. */
+function shouldUsePostgresCandidate(url: string, sourceKey: string): boolean {
+  if (sourceKey === "DATABASE_URL") return true;
+  if (!getSupabaseProjectRef()) return true;
+  return isSupabasePostgresUrl(url);
 }
 
 export function getSupabaseProjectRef(): string | undefined {
@@ -81,15 +109,47 @@ export function normalizeSupabasePostgresUrl(url: string): string {
   }
 }
 
+/** Ensure SSL, pooler flags, and serverless-friendly limits for Supabase on Vercel. */
+export function finalizePostgresUrl(url: string): string {
+  const normalized = normalizeSupabasePostgresUrl(url);
+
+  try {
+    const parsed = new URL(normalized.replace(/^postgresql:/, "postgres:"));
+    const password = parsed.password;
+    if (password) {
+      parsed.password = decodeURIComponent(password);
+    }
+
+    if (!parsed.searchParams.has("sslmode")) {
+      parsed.searchParams.set("sslmode", "require");
+    }
+
+    const port = parsed.port || (parsed.protocol === "postgres:" ? "5432" : "5432");
+    if (port === "6543" || parsed.hostname.includes("pooler.supabase.com")) {
+      parsed.searchParams.set("pgbouncer", "true");
+    }
+
+    if (process.env.VERCEL) {
+      parsed.searchParams.set("connection_limit", "1");
+    }
+
+    const finalized = parsed.toString().replace(/^postgres:/, "postgresql:");
+    return finalized;
+  } catch {
+    return normalized;
+  }
+}
+
 function getDatabaseUrlSourceOrder(): string[] {
-  // Always prefer explicitly set DATABASE_URL (e.g. Vercel dashboard) over integration aliases.
   return ["DATABASE_URL", ...DATABASE_URL_ALIASES];
 }
 
 export function normalizeDirectDatabaseEnv(): void {
   const unpooled = trimUrl(process.env.DATABASE_URL_UNPOOLED);
   if (isUsablePostgresUrl(unpooled)) {
-    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(unpooled);
+    process.env.DATABASE_URL_UNPOOLED = finalizePostgresUrl(
+      unpooled.replace(/\?pgbouncer=true/, "").replace(":6543/", ":5432/")
+    );
     return;
   }
 
@@ -97,7 +157,9 @@ export function normalizeDirectDatabaseEnv(): void {
     const candidate = trimUrl(process.env[key]);
     if (candidate === undefined || !isUsablePostgresUrl(candidate)) continue;
 
-    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(candidate);
+    process.env.DATABASE_URL_UNPOOLED = finalizePostgresUrl(
+      candidate.replace(/\?pgbouncer=true/, "").replace(":6543/", ":5432/")
+    );
     return;
   }
 
@@ -106,7 +168,7 @@ export function normalizeDirectDatabaseEnv(): void {
     const derived = pooled
       .replace(":6543/", ":5432/")
       .replace(/\?pgbouncer=true/, "");
-    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(derived);
+    process.env.DATABASE_URL_UNPOOLED = finalizePostgresUrl(derived);
   }
 }
 
@@ -122,9 +184,12 @@ export function normalizeDatabaseEnv(): void {
 
     const candidate = trimUrl(process.env[key]);
     if (candidate === undefined || !isUsableDatabaseUrl(candidate)) continue;
+    if (isPostgresDatabaseUrl(candidate) && !shouldUsePostgresCandidate(candidate, key)) {
+      continue;
+    }
 
     process.env.DATABASE_URL = isPostgresDatabaseUrl(candidate)
-      ? normalizeSupabasePostgresUrl(candidate)
+      ? finalizePostgresUrl(candidate)
       : candidate;
     normalizeDirectDatabaseEnv();
     return;
@@ -132,6 +197,8 @@ export function normalizeDatabaseEnv(): void {
 
   if (process.env.DATABASE_URL !== undefined && !isUsableDatabaseUrl(process.env.DATABASE_URL)) {
     delete process.env.DATABASE_URL;
+  } else {
+    normalizeDirectDatabaseEnv();
   }
 }
 
@@ -144,6 +211,30 @@ export function resolveDatabaseUrl(): string | undefined {
   }
 
   return url;
+}
+
+export function getDatabaseConnectionInfo(): {
+  host?: string;
+  port?: string;
+  user?: string;
+  database?: string;
+  pooled: boolean;
+} | undefined {
+  const url = resolveDatabaseUrl();
+  if (!url || !isPostgresDatabaseUrl(url)) return undefined;
+
+  try {
+    const parsed = new URL(url.replace(/^postgresql:/, "postgres:"));
+    return {
+      host: parsed.hostname,
+      port: parsed.port || "5432",
+      user: parsed.username,
+      database: parsed.pathname.replace(/^\//, "") || "postgres",
+      pooled: parsed.port === "6543" || parsed.searchParams.get("pgbouncer") === "true",
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export function isDatabaseConfigured(): boolean {

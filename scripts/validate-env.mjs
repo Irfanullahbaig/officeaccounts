@@ -12,9 +12,72 @@ const DATABASE_URL_ALIASES = [
   "POSTGRES_URL_NON_POOLING",
 ];
 
+function unquoteEnv(value) {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 function trimUrl(url) {
-  const trimmed = url?.trim();
+  if (url === undefined) return undefined;
+  const trimmed = unquoteEnv(url);
   return trimmed || undefined;
+}
+
+function isSupabasePostgresUrl(url) {
+  return (
+    url.includes("pooler.supabase.com") ||
+    url.includes(".supabase.co") ||
+    /^postgres(?:ql)?:\/\/postgres\.[^@]+@/i.test(url)
+  );
+}
+
+function getSupabaseProjectRef() {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+  const fromUrl = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/i)?.[1];
+  if (fromUrl) return fromUrl;
+  return process.env.SUPABASE_PROJECT_REF?.trim() || undefined;
+}
+
+function shouldUsePostgresCandidate(url, sourceKey) {
+  if (sourceKey === "DATABASE_URL") return true;
+  if (!getSupabaseProjectRef()) return true;
+  return isSupabasePostgresUrl(url);
+}
+
+function finalizePostgresUrl(url) {
+  const normalized = normalizeSupabasePostgresUrl(url);
+
+  try {
+    const parsed = new URL(normalized.replace(/^postgresql:/, "postgres:"));
+    const password = parsed.password;
+    if (password) {
+      parsed.password = decodeURIComponent(password);
+    }
+
+    if (!parsed.searchParams.has("sslmode")) {
+      parsed.searchParams.set("sslmode", "require");
+    }
+
+    const port = parsed.port || "5432";
+    if (port === "6543" || parsed.hostname.includes("pooler.supabase.com")) {
+      parsed.searchParams.set("pgbouncer", "true");
+    }
+
+    if (process.env.VERCEL) {
+      parsed.searchParams.set("connection_limit", "1");
+    }
+
+    return parsed.toString().replace(/^postgres:/, "postgresql:");
+  } catch {
+    return normalized;
+  }
 }
 
 export function isBuildPlaceholderUrl(url) {
@@ -63,7 +126,9 @@ export function normalizeSupabasePostgresUrl(url) {
 export function normalizeDirectDatabaseEnv() {
   const unpooled = trimUrl(process.env.DATABASE_URL_UNPOOLED);
   if (unpooled !== undefined && isUsableDatabaseUrl(unpooled) && unpooled.startsWith("postgres")) {
-    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(unpooled);
+    process.env.DATABASE_URL_UNPOOLED = finalizePostgresUrl(
+      unpooled.replace(/\?pgbouncer=true/, "").replace(":6543/", ":5432/")
+    );
     return process.env.DATABASE_URL_UNPOOLED;
   }
 
@@ -72,7 +137,9 @@ export function normalizeDirectDatabaseEnv() {
     if (candidate === undefined || !isUsableDatabaseUrl(candidate) || !candidate.startsWith("postgres")) {
       continue;
     }
-    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(candidate);
+    process.env.DATABASE_URL_UNPOOLED = finalizePostgresUrl(
+      candidate.replace(/\?pgbouncer=true/, "").replace(":6543/", ":5432/")
+    );
     return process.env.DATABASE_URL_UNPOOLED;
   }
 
@@ -90,9 +157,12 @@ export function normalizeDatabaseEnv() {
 
     const candidate = trimUrl(process.env[key]);
     if (!isUsableDatabaseUrl(candidate)) continue;
+    if (candidate.startsWith("postgres") && !shouldUsePostgresCandidate(candidate, key)) {
+      continue;
+    }
 
     process.env.DATABASE_URL = candidate.startsWith("postgres")
-      ? normalizeSupabasePostgresUrl(candidate)
+      ? finalizePostgresUrl(candidate)
       : candidate;
     normalizeDirectDatabaseEnv();
     return process.env.DATABASE_URL;
@@ -106,7 +176,7 @@ function deriveUnpooledFromPooled() {
   const pooled = trimUrl(process.env.DATABASE_URL);
   if (!isUsableDatabaseUrl(pooled) || !pooled.startsWith("postgres")) return;
   const derived = pooled.replace(":6543/", ":5432/").replace(/\?pgbouncer=true/, "");
-  process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(derived);
+  process.env.DATABASE_URL_UNPOOLED = finalizePostgresUrl(derived);
 }
 
 const isBuild = process.argv.includes("--build");
