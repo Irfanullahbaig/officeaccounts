@@ -8,13 +8,13 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
 
 const loginSchema = z.object({
-  email: z.string().email("Enter a valid company email"),
+  email: z.string().email("Enter a valid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
@@ -35,7 +35,7 @@ function LoginPageContent() {
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "admin@northnine.pk", password: "N9Accounts@123" },
+    defaultValues: { email: "", password: "" },
   });
 
   async function onSubmit(data: LoginForm) {
@@ -67,7 +67,7 @@ function LoginPageContent() {
       router.push(dest);
       router.refresh();
     } catch {
-      setError("Network error. Please check your connection and try again.");
+      setError("Unable to sign in. Please try again.");
     }
 
     setLoading(false);
@@ -105,9 +105,6 @@ function LoginPageContent() {
               </div>
             </div>
             <CardTitle className="text-2xl">Sign in</CardTitle>
-            <CardDescription>
-              Use your authorized company email to access the system
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -117,27 +114,30 @@ function LoginPageContent() {
                 </Alert>
               )}
               <div className="space-y-2">
-                <Label htmlFor="email">Company Email</Label>
-                <Input id="email" type="email" placeholder="admin@northnine.pk" {...form.register("email")} />
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@company.com"
+                  {...form.register("email")}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="••••••••" {...form.register("password")} />
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  {...form.register("password")}
+                />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Sign In
               </Button>
             </form>
-            <p className="text-xs text-muted-foreground text-center mt-6">
-              First time? Default admin: admin@northnine.pk / N9Accounts@123
-            </p>
-            <p className="text-xs text-muted-foreground text-center mt-2">
-              Board director?{" "}
-              <a href="/director/login" className="underline hover:text-foreground">
-                Sign in to the Director Portal
-              </a>
-            </p>
           </CardContent>
         </Card>
       </div>
