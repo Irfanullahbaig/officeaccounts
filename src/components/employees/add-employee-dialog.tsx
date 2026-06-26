@@ -48,15 +48,24 @@ export function AddEmployeeDialog() {
   async function onSubmit(data: FormData) {
     setLoading(true);
     try {
-      await createEmployee(data);
+      const result = await createEmployee(data);
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("Employee added successfully");
       setOpen(false);
-      form.reset();
+      form.reset({
+        role: "employee",
+        base_salary: 0,
+        joining_date: new Date().toISOString().split("T")[0],
+      });
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add employee");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (

@@ -5,6 +5,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireRole, createAuditLog, getCurrentUser } from "@/lib/auth/session";
 import {
+  assertDatabaseConfigured,
+  formatDatabaseError,
+} from "@/lib/db/query";
+import {
   accrueInterestForPeriod,
   allocatePayment,
   initialAccrualDate,
@@ -22,6 +26,10 @@ const PRINCIPAL_TOLERANCE = 0.01;
 
 type FinanceTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
+export type ActionResult =
+  | { success: true }
+  | { success: false; error: string };
+
 export async function createEmployee(data: {
   employee_code: string;
   full_name: string;
@@ -32,35 +40,52 @@ export async function createEmployee(data: {
   joining_date: string;
   base_salary: number;
   role: UserRole;
-}) {
-  await requireRole(["super_admin", "finance_manager"]);
-  const user = await getCurrentUser();
+}): Promise<ActionResult> {
+  try {
+    await requireRole(["super_admin", "finance_manager"]);
+    assertDatabaseConfigured();
 
-  const employee = await prisma.employee.create({
-    data: {
-      employeeCode: data.employee_code,
-      fullName: data.full_name,
-      email: data.email.toLowerCase(),
-      phone: data.phone,
-      department: data.department,
-      designation: data.designation,
-      joiningDate: new Date(data.joining_date),
-      baseSalary: data.base_salary,
-      role: data.role,
-      status: "active",
-    },
-  });
+    const baseSalary = Number(data.base_salary);
+    if (!Number.isFinite(baseSalary) || baseSalary < 0) {
+      return { success: false, error: "Base salary must be a valid number." };
+    }
 
-  await createAuditLog({
-    userEmail: user?.email,
-    action: "CREATE",
-    entityType: "employee",
-    entityId: employee.id,
-    newValue: { employeeCode: employee.employeeCode, email: employee.email },
-  });
+    const joiningDate = new Date(data.joining_date);
+    if (Number.isNaN(joiningDate.getTime())) {
+      return { success: false, error: "Joining date is invalid." };
+    }
 
-  revalidatePath("/employees");
-  return { success: true };
+    const user = await getCurrentUser();
+
+    const employee = await prisma.employee.create({
+      data: {
+        employeeCode: data.employee_code.trim(),
+        fullName: data.full_name.trim(),
+        email: data.email.toLowerCase().trim(),
+        phone: data.phone?.trim() || undefined,
+        department: data.department?.trim() || undefined,
+        designation: data.designation?.trim() || undefined,
+        joiningDate,
+        baseSalary,
+        role: data.role,
+        status: "active",
+      },
+    });
+
+    await createAuditLog({
+      userEmail: user?.email,
+      action: "CREATE",
+      entityType: "employee",
+      entityId: employee.id,
+      newValue: { employeeCode: employee.employeeCode, email: employee.email },
+    });
+
+    revalidatePath("/employees");
+    return { success: true };
+  } catch (error) {
+    console.error("createEmployee failed:", error);
+    return { success: false, error: formatDatabaseError(error) };
+  }
 }
 
 

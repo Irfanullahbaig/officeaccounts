@@ -1,4 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { isDatabaseConfigured } from "@/lib/db/config";
+
+export const DATABASE_REQUIRED_MESSAGE =
+  "Database is not configured. Set DATABASE_URL to save employees and other records.";
 
 export async function queryDatabase<T>(
   fallback: T,
@@ -12,4 +16,32 @@ export async function queryDatabase<T>(
     console.error("Database query failed:", error);
     return fallback;
   }
+}
+
+export function assertDatabaseConfigured(): void {
+  if (!isDatabaseConfigured()) {
+    throw new Error(DATABASE_REQUIRED_MESSAGE);
+  }
+}
+
+export function formatDatabaseError(error: unknown): string {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      const target = Array.isArray(error.meta?.target)
+        ? error.meta.target.join(", ")
+        : "field";
+      return `A record with this ${target} already exists.`;
+    }
+    if (error.code === "P2021" || error.code === "P2022") {
+      return "Database schema is out of date. Run prisma db push locally or redeploy with migrations.";
+    }
+  }
+
+  if (error instanceof Error) {
+    if (error.message === "Unauthorized") return "Your session expired. Please sign in again.";
+    if (error.message === "Forbidden") return "You do not have permission to perform this action.";
+    return error.message;
+  }
+
+  return "Database operation failed. Please try again.";
 }
