@@ -34,15 +34,13 @@ export function isUsableDatabaseUrl(url: string | undefined): url is string {
   return !isBuildPlaceholderUrl(trimmed);
 }
 
-export function isPostgresDatabaseUrl(url: string | undefined): boolean {
-  const trimmed = trimUrl(url);
-  return Boolean(
-    trimmed?.startsWith("postgres://") || trimmed?.startsWith("postgresql://")
-  );
+export function isPostgresDatabaseUrl(url: string | undefined): url is string {
+  if (!isUsableDatabaseUrl(url)) return false;
+  return url.startsWith("postgres://") || url.startsWith("postgresql://");
 }
 
 function isUsablePostgresUrl(url: string | undefined): url is string {
-  return isUsableDatabaseUrl(url) && isPostgresDatabaseUrl(url);
+  return isPostgresDatabaseUrl(url);
 }
 
 export function getSupabaseProjectRef(): string | undefined {
@@ -99,7 +97,7 @@ export function normalizeDirectDatabaseEnv(): void {
 
   for (const key of DIRECT_URL_ALIASES) {
     const candidate = trimUrl(process.env[key]);
-    if (!isUsablePostgresUrl(candidate)) continue;
+    if (candidate === undefined || !isUsablePostgresUrl(candidate)) continue;
 
     process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(candidate);
     return;
@@ -117,7 +115,7 @@ export function normalizeDatabaseEnv(): void {
     seen.add(key);
 
     const candidate = trimUrl(process.env[key]);
-    if (!isUsableDatabaseUrl(candidate)) continue;
+    if (candidate === undefined || !isUsableDatabaseUrl(candidate)) continue;
 
     process.env.DATABASE_URL = isPostgresDatabaseUrl(candidate)
       ? normalizeSupabasePostgresUrl(candidate)

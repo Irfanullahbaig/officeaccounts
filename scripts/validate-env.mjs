@@ -61,16 +61,15 @@ export function normalizeSupabasePostgresUrl(url) {
 }
 
 export function normalizeDirectDatabaseEnv() {
-  if (isUsableDatabaseUrl(process.env.DATABASE_URL_UNPOOLED)) {
-    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(
-      trimUrl(process.env.DATABASE_URL_UNPOOLED)
-    );
+  const unpooled = trimUrl(process.env.DATABASE_URL_UNPOOLED);
+  if (unpooled !== undefined && isUsableDatabaseUrl(unpooled) && unpooled.startsWith("postgres")) {
+    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(unpooled);
     return process.env.DATABASE_URL_UNPOOLED;
   }
 
   for (const key of ["DIRECT_URL", "POSTGRES_URL_NON_POOLING", "POSTGRES_URL"]) {
     const candidate = trimUrl(process.env[key]);
-    if (!isUsableDatabaseUrl(candidate) || !candidate.startsWith("postgres")) {
+    if (candidate === undefined || !isUsableDatabaseUrl(candidate) || !candidate.startsWith("postgres")) {
       continue;
     }
     process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(candidate);
