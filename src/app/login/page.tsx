@@ -24,7 +24,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 const CONFIG_ERROR =
-  "Server configuration error. Ensure NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, DATABASE_URL, and SUPABASE_SERVICE_ROLE_KEY are set.";
+  "Server configuration error. Ensure SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, DATABASE_URL, and NEXT_PUBLIC_* Supabase variables are set in Vercel.";
 
 export default function LoginPage() {
   return (

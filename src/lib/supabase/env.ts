@@ -1,20 +1,25 @@
+/** Server and client Supabase env — supports Next.js and @supabase/server naming. */
+
 export function getSupabaseUrl(): string {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!url) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL is not set.");
+    throw new Error(
+      "SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is not set."
+    );
   }
   return url;
 }
 
-/** Supports Supabase publishable key (new) or anon key (legacy). */
+/** Supports publishable key (new) or anon key (legacy). */
 export function getSupabaseAnonKey(): string {
   const key =
+    process.env.SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!key) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY is required."
+      "SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, or NEXT_PUBLIC_SUPABASE_ANON_KEY is required."
     );
   }
 
@@ -41,6 +46,14 @@ export function getSupabaseAuthUrl(): string {
   return (
     process.env.SUPABASE_AUTH_URL ??
     `${getSupabaseUrl().replace(/\/$/, "")}/auth/v1`
+  );
+}
+
+/** JWKS endpoint for JWT verification (@supabase/server). */
+export function getSupabaseJwksUrl(): string {
+  return (
+    process.env.SUPABASE_JWKS_URL ??
+    `${getSupabaseUrl().replace(/\/$/, "")}/auth/v1/.well-known/jwks.json`
   );
 }
 

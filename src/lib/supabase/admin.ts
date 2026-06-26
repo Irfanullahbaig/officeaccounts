@@ -1,11 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
-import { getSupabaseSecretKey, getSupabaseUrl } from "@/lib/supabase/env";
+import { createAdminClient as createServerAdminClient } from "@supabase/server/core";
+import { resolveSupabaseEnv } from "@/lib/supabase/env-bridge";
 
 export function createAdminClient() {
-  return createClient(getSupabaseUrl(), getSupabaseSecretKey(), {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
+  const env = resolveSupabaseEnv();
+  return createServerAdminClient({ env });
 }

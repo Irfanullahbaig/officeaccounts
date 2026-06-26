@@ -1,4 +1,5 @@
 const REQUIRED_SERVER_VARS = [
+  "SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_URL",
 ] as const;
 
@@ -8,9 +9,14 @@ function getSupabaseSecretKey(): string | undefined {
 
 function getSupabasePublicKey(): string | undefined {
   return (
+    process.env.SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
+}
+
+function getSupabaseUrl(): string | undefined {
+  return process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 }
 
 function resolveDatabaseUrl(): string | undefined {
@@ -43,13 +49,18 @@ export function getSetupSecret(): string {
 }
 
 export function validateServerEnv() {
-  const missing = REQUIRED_SERVER_VARS.filter((key) => !process.env[key]);
+  const missing: string[] = [];
 
+  if (!getSupabaseUrl()) {
+    missing.push("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
+  }
   if (!getSupabasePublicKey()) {
-    missing.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" as (typeof REQUIRED_SERVER_VARS)[number]);
+    missing.push(
+      "SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+    );
   }
   if (!getSupabaseSecretKey()) {
-    missing.push("SUPABASE_SECRET_KEY" as (typeof REQUIRED_SERVER_VARS)[number]);
+    missing.push("SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY");
   }
 
   if (missing.length > 0) {
