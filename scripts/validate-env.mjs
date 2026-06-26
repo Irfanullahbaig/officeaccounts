@@ -60,6 +60,26 @@ export function normalizeSupabasePostgresUrl(url) {
   }
 }
 
+export function normalizeDirectDatabaseEnv() {
+  if (isUsableDatabaseUrl(process.env.DATABASE_URL_UNPOOLED)) {
+    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(
+      trimUrl(process.env.DATABASE_URL_UNPOOLED)
+    );
+    return process.env.DATABASE_URL_UNPOOLED;
+  }
+
+  for (const key of ["DIRECT_URL", "POSTGRES_URL_NON_POOLING", "POSTGRES_URL"]) {
+    const candidate = trimUrl(process.env[key]);
+    if (!isUsableDatabaseUrl(candidate) || !candidate.startsWith("postgres")) {
+      continue;
+    }
+    process.env.DATABASE_URL_UNPOOLED = normalizeSupabasePostgresUrl(candidate);
+    return process.env.DATABASE_URL_UNPOOLED;
+  }
+
+  return trimUrl(process.env.DATABASE_URL_UNPOOLED);
+}
+
 export function normalizeDatabaseEnv() {
   const order = process.env.VERCEL
     ? ["POSTGRES_PRISMA_URL", "DATABASE_URL", ...DATABASE_URL_ALIASES]
@@ -76,9 +96,11 @@ export function normalizeDatabaseEnv() {
     process.env.DATABASE_URL = candidate.startsWith("postgres")
       ? normalizeSupabasePostgresUrl(candidate)
       : candidate;
+    normalizeDirectDatabaseEnv();
     return process.env.DATABASE_URL;
   }
 
+  normalizeDirectDatabaseEnv();
   return trimUrl(process.env.DATABASE_URL);
 }
 

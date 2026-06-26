@@ -1,7 +1,7 @@
-import { isDatabaseConfigured, normalizeDatabaseEnv } from "@/lib/db/config";
-
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const { normalizeDatabaseEnv, isDatabaseConfigured } = await import("@/lib/db/env");
 
   normalizeDatabaseEnv();
 

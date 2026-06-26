@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { isDatabaseConfigured } from "@/lib/db/config";
+import { isDatabaseConfigured } from "@/lib/db/env";
 
 export const DATABASE_REQUIRED_MESSAGE =
   "Database is not configured. Set DATABASE_URL to save employees and other records.";

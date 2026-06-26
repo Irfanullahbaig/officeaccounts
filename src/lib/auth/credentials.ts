@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { isDatabaseConfigured } from "@/lib/db/config";
+import { isDatabaseConfigured } from "@/lib/db/env";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 import { ensureDefaultAdmin, logLoginActivity } from "@/lib/auth/bootstrap-admin";

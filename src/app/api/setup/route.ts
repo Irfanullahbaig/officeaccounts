@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { execSync } from "node:child_process";
 import { ensureDefaultAdmin } from "@/lib/auth/bootstrap-admin";
-import { isDatabaseConfigured, normalizeDatabaseEnv } from "@/lib/db/config";
+import { isDatabaseConfigured, normalizeDatabaseEnv } from "@/lib/db/env";
 import { getSetupSecret } from "@/lib/env";
 
 export const dynamic = "force-dynamic";

@@ -1,4 +1,4 @@
-import { isDatabaseConfigured, resolveDatabaseUrl } from "@/lib/db/config";
+import { isDatabaseConfigured, resolveDatabaseUrl } from "@/lib/db/env";
 
 export function getDatabaseUrl(): string {
   const url = resolveDatabaseUrl();

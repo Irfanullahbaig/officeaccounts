@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { isDatabaseConfigured } from "@/lib/db/config";
+import { isDatabaseConfigured } from "@/lib/db/env";
 import type { DashboardStats } from "@/types/database";
 
 const EMPTY_STATS: DashboardStats = {

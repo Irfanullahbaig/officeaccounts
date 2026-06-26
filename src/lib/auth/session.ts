@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { isDatabaseConfigured } from "@/lib/db/config";
+import { isDatabaseConfigured } from "@/lib/db/env";
 import type { AuthUser, UserRole } from "@/types/database";
 import { isReadOnlyRole } from "@/lib/auth/permissions";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session-token";

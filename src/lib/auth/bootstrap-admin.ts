@@ -5,7 +5,7 @@ import {
   DEFAULT_ADMIN_EMAIL,
   DEFAULT_ADMIN_PASSWORD,
 } from "@/lib/auth/admin-credentials";
-import { isDatabaseConfigured } from "@/lib/db/config";
+import { isDatabaseConfigured } from "@/lib/db/env";
 import { upsertSupabaseAuthUser } from "@/lib/auth/supabase-users";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
 
