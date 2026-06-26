@@ -9,6 +9,11 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schemaPath = resolve(__dirname, "../prisma/schema.prisma");
+const prismaBin = resolve(__dirname, "../node_modules/.bin/prisma");
+
+function runGenerate() {
+  execSync(`"${prismaBin}" generate`, { stdio: "inherit" });
+}
 
 function syncSchemaProvider() {
   normalizeDatabaseEnv();
@@ -41,6 +46,11 @@ function syncSchemaProvider() {
 }
 
 ensureDatabaseUrlForGenerate();
-syncSchemaProvider();
 
-execSync("npx prisma generate", { stdio: "inherit" });
+// Vercel: schema is committed as postgresql — skip local provider toggling.
+if (process.env.VERCEL === "1") {
+  runGenerate();
+} else {
+  syncSchemaProvider();
+  runGenerate();
+}

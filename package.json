@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/prisma-generate.mjs && next dev",
-    "build": "node scripts/validate-env.mjs --build && node scripts/prisma-generate.mjs && node scripts/vercel-db-push.mjs && next build",
+    "build": "next build",
     "postinstall": "node scripts/prisma-generate.mjs",
     "start": "next start",
     "lint": "eslint",
     "db:push": "prisma db push",
+    "db:sync": "node scripts/vercel-db-push.mjs",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force"

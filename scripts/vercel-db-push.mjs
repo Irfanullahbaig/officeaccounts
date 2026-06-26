@@ -2,6 +2,8 @@ import { execSync } from "node:child_process";
 import { loadEnvFiles } from "./load-env.mjs";
 import { isUsableDatabaseUrl, normalizeDatabaseEnv } from "./validate-env.mjs";
 
+/** Manual schema sync — not run on Vercel builds. Use `npm run db:sync` or /api/setup. */
+
 loadEnvFiles();
 normalizeDatabaseEnv();
 
