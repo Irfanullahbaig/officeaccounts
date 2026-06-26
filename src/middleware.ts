@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { isDirector } from "@/lib/auth/permissions";
 import type { UserRole } from "@/types/database";
 
-const PUBLIC_ROUTES = ["/login", "/access-denied", "/auth", "/api/setup", "/director/login"];
+const PUBLIC_ROUTES = [
+  "/login",
+  "/access-denied",
+  "/auth",
+  "/api/setup",
+  "/api/health",
+  "/director/login",
+];
 
 const ADMIN_PORTAL_PREFIXES = [
   "/dashboard",
@@ -22,6 +28,10 @@ const ADMIN_PORTAL_PREFIXES = [
   "/my",
 ];
 
+function isDirector(role: UserRole | undefined) {
+  return role === "director";
+}
+
 function isDirectorRoute(pathname: string) {
   return pathname === "/director" || pathname.startsWith("/director/");
 }
@@ -32,77 +42,96 @@ function isAdminPortalRoute(pathname: string) {
   );
 }
 
-export async function middleware(request: NextRequest) {
-  const { supabaseResponse, user } = await updateSession(request);
-  const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
-  const role = user?.app_metadata?.role as UserRole | undefined;
-  const director = role ? isDirector(role) : false;
+function isPublicRoute(pathname: string) {
+  return PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+}
 
-  if (isDirectorRoute(pathname)) {
-    if (pathname === "/director/login") {
-      if (user && director) {
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  try {
+    const { supabaseResponse, user, configured } = await updateSession(request);
+    const isPublic = isPublicRoute(pathname);
+    const role = user?.app_metadata?.role as UserRole | undefined;
+    const director = isDirector(role);
+
+    if (!configured && !isPublic) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    if (isDirectorRoute(pathname)) {
+      if (pathname === "/director/login") {
+        if (user && director) {
+          return NextResponse.redirect(new URL("/director/dashboard", request.url));
+        }
+        return supabaseResponse;
+      }
+
+      if (!user || !director) {
+        return NextResponse.redirect(new URL("/director/login", request.url));
+      }
+
+      if (pathname === "/director") {
         return NextResponse.redirect(new URL("/director/dashboard", request.url));
       }
+
       return supabaseResponse;
     }
 
-    if (!user || !director) {
-      return NextResponse.redirect(new URL("/director/login", request.url));
+    if (!user && !isPublic) {
+      return NextResponse.redirect(new URL("/login", request.url));
     }
 
-    if (pathname === "/director") {
+    if (user && director && (pathname === "/login" || isAdminPortalRoute(pathname) || pathname === "/")) {
       return NextResponse.redirect(new URL("/director/dashboard", request.url));
     }
 
-    return supabaseResponse;
-  }
+    if (user && pathname === "/login") {
+      const dest = role === "employee" ? "/my" : "/dashboard";
+      return NextResponse.redirect(new URL(dest, request.url));
+    }
 
-  if (!user && !isPublic) {
+    if (user && !isPublic && !director) {
+      const adminRoutes = ["/users", "/settings"];
+      const financeRoutes = [
+        "/employees",
+        "/payroll",
+        "/savings",
+        "/loans",
+        "/commissions",
+        "/revenue",
+        "/expenses",
+        "/reports",
+        "/audit-logs",
+      ];
+
+      if (adminRoutes.some((route) => pathname.startsWith(route)) && role !== "super_admin") {
+        return NextResponse.redirect(
+          new URL(role === "employee" ? "/my" : "/dashboard", request.url)
+        );
+      }
+
+      if (financeRoutes.some((route) => pathname.startsWith(route)) && role === "employee") {
+        return NextResponse.redirect(new URL("/my", request.url));
+      }
+
+      if (pathname === "/") {
+        return NextResponse.redirect(
+          new URL(role === "employee" ? "/my" : "/dashboard", request.url)
+        );
+      }
+    }
+
+    return supabaseResponse;
+  } catch (error) {
+    console.error("Middleware invocation failed:", error);
+
+    if (isPublicRoute(pathname)) {
+      return NextResponse.next();
+    }
+
     return NextResponse.redirect(new URL("/login", request.url));
   }
-
-  if (user && director && (pathname === "/login" || isAdminPortalRoute(pathname) || pathname === "/")) {
-    return NextResponse.redirect(new URL("/director/dashboard", request.url));
-  }
-
-  if (user && pathname === "/login") {
-    const dest = role === "employee" ? "/my" : "/dashboard";
-    return NextResponse.redirect(new URL(dest, request.url));
-  }
-
-  if (user && !isPublic && !director) {
-    const adminRoutes = ["/users", "/settings"];
-    const financeRoutes = [
-      "/employees",
-      "/payroll",
-      "/savings",
-      "/loans",
-      "/commissions",
-      "/revenue",
-      "/expenses",
-      "/reports",
-      "/audit-logs",
-    ];
-
-    if (adminRoutes.some((route) => pathname.startsWith(route)) && role !== "super_admin") {
-      return NextResponse.redirect(
-        new URL(role === "employee" ? "/my" : "/dashboard", request.url)
-      );
-    }
-
-    if (financeRoutes.some((route) => pathname.startsWith(route)) && role === "employee") {
-      return NextResponse.redirect(new URL("/my", request.url));
-    }
-
-    if (pathname === "/") {
-      return NextResponse.redirect(
-        new URL(role === "employee" ? "/my" : "/dashboard", request.url)
-      );
-    }
-  }
-
-  return supabaseResponse;
 }
 
 export const config = {
