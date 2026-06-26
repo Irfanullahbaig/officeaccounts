@@ -47,6 +47,7 @@ function DirectorLoginContent() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({
           email: data.email,
           password: data.password,

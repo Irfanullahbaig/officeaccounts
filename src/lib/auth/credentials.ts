@@ -22,22 +22,31 @@ async function finalizeLogin(user: {
   employeeId: string | null;
   fullName: string | null;
 }) {
-  await setSessionCookie({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    employeeId: user.employeeId,
-    fullName: user.fullName,
-  });
+  try {
+    await setSessionCookie({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      employeeId: user.employeeId,
+      fullName: user.fullName,
+    });
+  } catch (error) {
+    console.error("Failed to set session cookie:", error);
+    throw new Error(
+      "Unable to start a session. Set SESSION_SECRET in your environment variables."
+    );
+  }
 }
 
-async function performStaticStaffLogin(email: string, password: string): Promise<LoginResult> {
+async function loginWithStaticUser(
+  email: string,
+  password: string,
+  portal: "staff" | "director"
+): Promise<LoginResult | null> {
   const user = authenticateStaticUser(email, password);
-  if (!user) {
-    return { ok: false, error: "Invalid email or password.", status: 401 };
-  }
+  if (!user) return null;
 
-  if (user.role === "director") {
+  if (portal === "staff" && user.role === "director") {
     return {
       ok: false,
       error: `Directors must sign in through the Director Portal at ${DIRECTOR_PORTAL_LOGIN}`,
@@ -45,35 +54,30 @@ async function performStaticStaffLogin(email: string, password: string): Promise
     };
   }
 
-  await finalizeLogin(user);
-  return { ok: true, role: user.role };
-}
-
-async function performStaticDirectorLogin(email: string, password: string): Promise<LoginResult> {
-  const user = authenticateStaticUser(email, password);
-  if (!user || user.role !== "director") {
+  if (portal === "director" && user.role !== "director") {
     return { ok: false, error: DIRECTOR_ACCESS_DENIED_MESSAGE, status: 401 };
   }
 
   await finalizeLogin(user);
-  return { ok: true, role: "director" };
+  return { ok: true, role: user.role };
 }
 
-async function ensureDatabaseReady(): Promise<{ ok: true } | { ok: false; error: string }> {
+async function loginWithDatabase(
+  email: string,
+  password: string,
+  portal: "staff" | "director"
+): Promise<LoginResult | null> {
+  const normalizedEmail = email.toLowerCase().trim();
+
   try {
     const count = await prisma.allowedUser.count();
     if (count === 0) {
       await ensureDefaultAdmin();
     }
-    return { ok: true };
   } catch (error) {
-    console.error("Database readiness check failed:", error);
-    return { ok: false, error: "Login failed. Please try again." };
+    console.error("Database bootstrap failed:", error);
+    return null;
   }
-}
-
-async function authenticateDatabaseUser(email: string, password: string) {
-  const normalizedEmail = email.toLowerCase().trim();
 
   const allowedUser = await prisma.allowedUser.findUnique({
     where: { email: normalizedEmail },
@@ -82,114 +86,77 @@ async function authenticateDatabaseUser(email: string, password: string) {
 
   if (!allowedUser || allowedUser.status !== "active") {
     await logLoginActivity(normalizedEmail, false, ACCESS_DENIED_MESSAGE);
-    return { ok: false as const, error: ACCESS_DENIED_MESSAGE };
+    return { ok: false, error: ACCESS_DENIED_MESSAGE, status: 401 };
   }
 
   const passwordValid = await bcrypt.compare(password, allowedUser.passwordHash);
   if (!passwordValid) {
     await logLoginActivity(normalizedEmail, false, "Invalid password");
-    return { ok: false as const, error: "Invalid email or password." };
+    return null;
   }
 
-  return { ok: true as const, allowedUser };
+  if (portal === "staff" && allowedUser.role === "director") {
+    await logLoginActivity(allowedUser.email, false, "Director attempted staff login");
+    return {
+      ok: false,
+      error: `Directors must sign in through the Director Portal at ${DIRECTOR_PORTAL_LOGIN}`,
+      status: 403,
+    };
+  }
+
+  if (portal === "director" && allowedUser.role !== "director") {
+    await logLoginActivity(allowedUser.email, false, DIRECTOR_ACCESS_DENIED_MESSAGE);
+    return { ok: false, error: DIRECTOR_ACCESS_DENIED_MESSAGE, status: 401 };
+  }
+
+  await logLoginActivity(allowedUser.email, true);
+  await prisma.allowedUser
+    .update({
+      where: { id: allowedUser.id },
+      data: { lastLoginAt: new Date() },
+    })
+    .catch(() => undefined);
+
+  await finalizeLogin({
+    id: allowedUser.id,
+    email: allowedUser.email,
+    role: allowedUser.role as UserRole,
+    employeeId: allowedUser.employeeId,
+    fullName: allowedUser.employee?.fullName ?? null,
+  });
+
+  return { ok: true, role: allowedUser.role as UserRole };
+}
+
+async function performLogin(
+  email: string,
+  password: string,
+  portal: "staff" | "director"
+): Promise<LoginResult> {
+  try {
+    const staticResult = await loginWithStaticUser(email, password, portal);
+    if (staticResult?.ok) return staticResult;
+    if (staticResult && !staticResult.ok) return staticResult;
+
+    if (isDatabaseConfigured()) {
+      const dbResult = await loginWithDatabase(email, password, portal);
+      if (dbResult?.ok) return dbResult;
+      if (dbResult && !dbResult.ok) return dbResult;
+    }
+
+    return { ok: false, error: "Invalid email or password.", status: 401 };
+  } catch (error) {
+    console.error(`${portal} login error:`, error);
+    const message =
+      error instanceof Error ? error.message : "Unable to sign in. Please try again.";
+    return { ok: false, error: message, status: 500 };
+  }
 }
 
 export async function performStaffLogin(email: string, password: string): Promise<LoginResult> {
-  if (!isDatabaseConfigured()) {
-    return performStaticStaffLogin(email, password);
-  }
-
-  try {
-    const ready = await ensureDatabaseReady();
-    if (!ready.ok) {
-      return { ok: false, error: ready.error, status: 503 };
-    }
-
-    const result = await authenticateDatabaseUser(email, password);
-    if (!result.ok) {
-      return { ok: false, error: result.error, status: 401 };
-    }
-
-    const { allowedUser } = result;
-
-    if (allowedUser.role === "director") {
-      await logLoginActivity(allowedUser.email, false, "Director attempted staff login");
-      return {
-        ok: false,
-        error: `Directors must sign in through the Director Portal at ${DIRECTOR_PORTAL_LOGIN}`,
-        status: 403,
-      };
-    }
-
-    await logLoginActivity(allowedUser.email, true);
-    await prisma.allowedUser
-      .update({
-        where: { id: allowedUser.id },
-        data: { lastLoginAt: new Date() },
-      })
-      .catch(() => undefined);
-
-    await finalizeLogin({
-      id: allowedUser.id,
-      email: allowedUser.email,
-      role: allowedUser.role as UserRole,
-      employeeId: allowedUser.employeeId,
-      fullName: allowedUser.employee?.fullName ?? null,
-    });
-
-    return { ok: true, role: allowedUser.role as UserRole };
-  } catch (error) {
-    console.error("Staff login error:", error);
-    return { ok: false, error: "Login failed. Please try again.", status: 500 };
-  }
+  return performLogin(email, password, "staff");
 }
 
 export async function performDirectorLogin(email: string, password: string): Promise<LoginResult> {
-  if (!isDatabaseConfigured()) {
-    return performStaticDirectorLogin(email, password);
-  }
-
-  try {
-    const ready = await ensureDatabaseReady();
-    if (!ready.ok) {
-      return { ok: false, error: ready.error, status: 503 };
-    }
-
-    const result = await authenticateDatabaseUser(email, password);
-    if (!result.ok) {
-      const error =
-        result.error === ACCESS_DENIED_MESSAGE
-          ? DIRECTOR_ACCESS_DENIED_MESSAGE
-          : result.error;
-      return { ok: false, error, status: 401 };
-    }
-
-    const { allowedUser } = result;
-
-    if (allowedUser.role !== "director") {
-      await logLoginActivity(allowedUser.email, false, DIRECTOR_ACCESS_DENIED_MESSAGE);
-      return { ok: false, error: DIRECTOR_ACCESS_DENIED_MESSAGE, status: 403 };
-    }
-
-    await logLoginActivity(allowedUser.email, true);
-    await prisma.allowedUser
-      .update({
-        where: { id: allowedUser.id },
-        data: { lastLoginAt: new Date() },
-      })
-      .catch(() => undefined);
-
-    await finalizeLogin({
-      id: allowedUser.id,
-      email: allowedUser.email,
-      role: "director",
-      employeeId: allowedUser.employeeId,
-      fullName: allowedUser.employee?.fullName ?? null,
-    });
-
-    return { ok: true, role: "director" };
-  } catch (error) {
-    console.error("Director login error:", error);
-    return { ok: false, error: "Login failed. Please try again.", status: 500 };
-  }
+  return performLogin(email, password, "director");
 }
