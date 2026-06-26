@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { isDatabaseConfigured } from "@/lib/db/config";
 import { ensureDefaultAdmin, logLoginActivity } from "@/lib/auth/bootstrap-admin";
 import { setSessionCookie } from "@/lib/auth/cookies";
+import { authenticateStaticUser } from "@/lib/auth/static-auth";
 import {
   ACCESS_DENIED_MESSAGE,
   DIRECTOR_ACCESS_DENIED_MESSAGE,
@@ -13,29 +15,51 @@ export type LoginResult =
   | { ok: true; role: UserRole }
   | { ok: false; error: string; status?: number };
 
-function prismaErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (
-    message.includes("P1001") ||
-    message.includes("Can't reach database") ||
-    message.includes("ECONNREFUSED")
-  ) {
-    return "Cannot connect to the database. Set DATABASE_URL in Vercel → Environment Variables.";
-  }
-
-  if (
-    message.includes("P2021") ||
-    message.includes("does not exist") ||
-    message.includes("no such table")
-  ) {
-    return "Database not initialized. Open /api/setup?secret=YOUR_SESSION_SECRET once, then try again.";
-  }
-
-  return "Login failed. Please try again.";
+async function finalizeLogin(user: {
+  id: string;
+  email: string;
+  role: UserRole;
+  employeeId: string | null;
+  fullName: string | null;
+}) {
+  await setSessionCookie({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    employeeId: user.employeeId,
+    fullName: user.fullName,
+  });
 }
 
-export async function ensureDatabaseReady(): Promise<{ ok: true } | { ok: false; error: string }> {
+async function performStaticStaffLogin(email: string, password: string): Promise<LoginResult> {
+  const user = authenticateStaticUser(email, password);
+  if (!user) {
+    return { ok: false, error: "Invalid email or password.", status: 401 };
+  }
+
+  if (user.role === "director") {
+    return {
+      ok: false,
+      error: `Directors must sign in through the Director Portal at ${DIRECTOR_PORTAL_LOGIN}`,
+      status: 403,
+    };
+  }
+
+  await finalizeLogin(user);
+  return { ok: true, role: user.role };
+}
+
+async function performStaticDirectorLogin(email: string, password: string): Promise<LoginResult> {
+  const user = authenticateStaticUser(email, password);
+  if (!user || user.role !== "director") {
+    return { ok: false, error: DIRECTOR_ACCESS_DENIED_MESSAGE, status: 401 };
+  }
+
+  await finalizeLogin(user);
+  return { ok: true, role: "director" };
+}
+
+async function ensureDatabaseReady(): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const count = await prisma.allowedUser.count();
     if (count === 0) {
@@ -44,11 +68,11 @@ export async function ensureDatabaseReady(): Promise<{ ok: true } | { ok: false;
     return { ok: true };
   } catch (error) {
     console.error("Database readiness check failed:", error);
-    return { ok: false, error: prismaErrorMessage(error) };
+    return { ok: false, error: "Login failed. Please try again." };
   }
 }
 
-async function authenticateUser(email: string, password: string) {
+async function authenticateDatabaseUser(email: string, password: string) {
   const normalizedEmail = email.toLowerCase().trim();
 
   const allowedUser = await prisma.allowedUser.findUnique({
@@ -70,37 +94,18 @@ async function authenticateUser(email: string, password: string) {
   return { ok: true as const, allowedUser };
 }
 
-async function finalizeLogin(allowedUser: {
-  id: string;
-  email: string;
-  role: string;
-  employeeId: string | null;
-  employee: { fullName: string } | null;
-}) {
-  await prisma.allowedUser
-    .update({
-      where: { id: allowedUser.id },
-      data: { lastLoginAt: new Date() },
-    })
-    .catch(() => undefined);
-
-  await setSessionCookie({
-    id: allowedUser.id,
-    email: allowedUser.email,
-    role: allowedUser.role as UserRole,
-    employeeId: allowedUser.employeeId,
-    fullName: allowedUser.employee?.fullName ?? null,
-  });
-}
-
 export async function performStaffLogin(email: string, password: string): Promise<LoginResult> {
+  if (!isDatabaseConfigured()) {
+    return performStaticStaffLogin(email, password);
+  }
+
   try {
     const ready = await ensureDatabaseReady();
     if (!ready.ok) {
       return { ok: false, error: ready.error, status: 503 };
     }
 
-    const result = await authenticateUser(email, password);
+    const result = await authenticateDatabaseUser(email, password);
     if (!result.ok) {
       return { ok: false, error: result.error, status: 401 };
     }
@@ -117,23 +122,40 @@ export async function performStaffLogin(email: string, password: string): Promis
     }
 
     await logLoginActivity(allowedUser.email, true);
-    await finalizeLogin(allowedUser);
+    await prisma.allowedUser
+      .update({
+        where: { id: allowedUser.id },
+        data: { lastLoginAt: new Date() },
+      })
+      .catch(() => undefined);
+
+    await finalizeLogin({
+      id: allowedUser.id,
+      email: allowedUser.email,
+      role: allowedUser.role as UserRole,
+      employeeId: allowedUser.employeeId,
+      fullName: allowedUser.employee?.fullName ?? null,
+    });
 
     return { ok: true, role: allowedUser.role as UserRole };
   } catch (error) {
     console.error("Staff login error:", error);
-    return { ok: false, error: prismaErrorMessage(error), status: 500 };
+    return { ok: false, error: "Login failed. Please try again.", status: 500 };
   }
 }
 
 export async function performDirectorLogin(email: string, password: string): Promise<LoginResult> {
+  if (!isDatabaseConfigured()) {
+    return performStaticDirectorLogin(email, password);
+  }
+
   try {
     const ready = await ensureDatabaseReady();
     if (!ready.ok) {
       return { ok: false, error: ready.error, status: 503 };
     }
 
-    const result = await authenticateUser(email, password);
+    const result = await authenticateDatabaseUser(email, password);
     if (!result.ok) {
       const error =
         result.error === ACCESS_DENIED_MESSAGE
@@ -150,11 +172,24 @@ export async function performDirectorLogin(email: string, password: string): Pro
     }
 
     await logLoginActivity(allowedUser.email, true);
-    await finalizeLogin(allowedUser);
+    await prisma.allowedUser
+      .update({
+        where: { id: allowedUser.id },
+        data: { lastLoginAt: new Date() },
+      })
+      .catch(() => undefined);
+
+    await finalizeLogin({
+      id: allowedUser.id,
+      email: allowedUser.email,
+      role: "director",
+      employeeId: allowedUser.employeeId,
+      fullName: allowedUser.employee?.fullName ?? null,
+    });
 
     return { ok: true, role: "director" };
   } catch (error) {
     console.error("Director login error:", error);
-    return { ok: false, error: prismaErrorMessage(error), status: 500 };
+    return { ok: false, error: "Login failed. Please try again.", status: 500 };
   }
 }

@@ -1,10 +1,7 @@
-export function getDatabaseUrl(): string {
-  const url =
-    process.env.DATABASE_URL ??
-    process.env.SUPABASE_DB_URL ??
-    process.env.POSTGRES_PRISMA_URL ??
-    process.env.POSTGRES_URL;
+import { isDatabaseConfigured, resolveDatabaseUrl } from "@/lib/db/config";
 
+export function getDatabaseUrl(): string {
+  const url = resolveDatabaseUrl();
   if (!url) {
     throw new Error("DATABASE_URL is not set.");
   }
@@ -19,3 +16,5 @@ export function getSetupSecret(): string {
     ""
   );
 }
+
+export { isDatabaseConfigured };

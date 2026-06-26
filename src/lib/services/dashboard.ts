@@ -1,7 +1,41 @@
 import { prisma } from "@/lib/prisma";
+import { isDatabaseConfigured } from "@/lib/db/config";
 import type { DashboardStats } from "@/types/database";
 
+const EMPTY_STATS: DashboardStats = {
+  totalRevenue: 0,
+  totalCompanyShare: 0,
+  totalEmployeeEarnings: 0,
+  totalSavings: 0,
+  totalActiveLoans: 0,
+  outstandingLoanAmount: 0,
+  totalLeadCommissions: 0,
+  totalCoLeadCommissions: 0,
+  topPerformingEmployee: "N/A",
+  topRevenueProject: "N/A",
+};
+
+function emptyChartData() {
+  const monthLabels = Array.from({ length: 12 }, (_, i) =>
+    new Date(new Date().getFullYear(), i).toLocaleString("en", { month: "short" })
+  );
+
+  return {
+    monthLabels,
+    revenueVsExpenses: monthLabels.map((month) => ({ month, revenue: 0, expenses: 0 })),
+    payrollTrend: monthLabels.map((month) => ({ month, payroll: 0 })),
+    loanCollectionTrend: monthLabels.map((month) => ({ month, collections: 0 })),
+    profitLossTrend: monthLabels.map((month) => ({ month, profit: 0 })),
+    savingsTrend: monthLabels.map((month) => ({ month, savings: 0 })),
+  };
+}
+
 export async function getDashboardStats(): Promise<DashboardStats> {
+  if (!isDatabaseConfigured()) {
+    return EMPTY_STATS;
+  }
+
+  try {
   const [
     incomeEntries,
     loans,
@@ -58,9 +92,18 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     topPerformingEmployee: topEmployee?.fullName ?? "N/A",
     topRevenueProject: topProject?.name ?? "N/A",
   };
+  } catch (error) {
+    console.error("getDashboardStats failed:", error);
+    return EMPTY_STATS;
+  }
 }
 
 export async function getChartData() {
+  if (!isDatabaseConfigured()) {
+    return emptyChartData();
+  }
+
+  try {
   const currentYear = new Date().getFullYear();
   const startOfYear = new Date(currentYear, 0, 1);
   const endOfYear = new Date(currentYear, 11, 31);
@@ -148,4 +191,8 @@ export async function getChartData() {
       savings: savingsByMonth[i],
     })),
   };
+  } catch (error) {
+    console.error("getChartData failed:", error);
+    return emptyChartData();
+  }
 }

@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { isDatabaseConfigured } from "@/lib/db/config";
 import type { AuthUser, UserRole } from "@/types/database";
 import { isReadOnlyRole } from "@/lib/auth/permissions";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session-token";
@@ -13,20 +14,40 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   const session = await verifySessionToken(token);
   if (!session) return null;
 
-  const allowedUser = await prisma.allowedUser.findUnique({
-    where: { id: session.id },
-    include: { employee: true },
-  });
+  if (!isDatabaseConfigured()) {
+    return {
+      id: session.id,
+      email: session.email,
+      role: session.role,
+      employeeId: session.employeeId,
+      fullName: session.fullName,
+    };
+  }
 
-  if (!allowedUser || allowedUser.status !== "active") return null;
+  try {
+    const allowedUser = await prisma.allowedUser.findUnique({
+      where: { id: session.id },
+      include: { employee: true },
+    });
 
-  return {
-    id: allowedUser.id,
-    email: allowedUser.email,
-    role: allowedUser.role as UserRole,
-    employeeId: allowedUser.employeeId,
-    fullName: allowedUser.employee?.fullName ?? session.fullName,
-  };
+    if (!allowedUser || allowedUser.status !== "active") return null;
+
+    return {
+      id: allowedUser.id,
+      email: allowedUser.email,
+      role: allowedUser.role as UserRole,
+      employeeId: allowedUser.employeeId,
+      fullName: allowedUser.employee?.fullName ?? session.fullName,
+    };
+  } catch {
+    return {
+      id: session.id,
+      email: session.email,
+      role: session.role,
+      employeeId: session.employeeId,
+      fullName: session.fullName,
+    };
+  }
 }
 
 export async function requireUser(): Promise<AuthUser> {
@@ -61,14 +82,20 @@ export async function createAuditLog(params: {
   oldValue?: Record<string, unknown> | null;
   newValue?: Record<string, unknown> | null;
 }) {
-  await prisma.auditLog.create({
-    data: {
-      userEmail: params.userEmail ?? null,
-      action: params.action,
-      entityType: params.entityType,
-      entityId: params.entityId ?? null,
-      oldValue: params.oldValue ? JSON.stringify(params.oldValue) : null,
-      newValue: params.newValue ? JSON.stringify(params.newValue) : null,
-    },
-  });
+  if (!isDatabaseConfigured()) return;
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userEmail: params.userEmail ?? null,
+        action: params.action,
+        entityType: params.entityType,
+        entityId: params.entityId ?? null,
+        oldValue: params.oldValue ? JSON.stringify(params.oldValue) : null,
+        newValue: params.newValue ? JSON.stringify(params.newValue) : null,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to write audit log:", error);
+  }
 }

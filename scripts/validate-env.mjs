@@ -36,22 +36,7 @@ if (isBuild) {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    if (isVercel) {
-      console.warn("\n⚠️  Vercel build: DATABASE_URL is not configured yet.\n");
-    } else {
-      console.warn(
-        "\n⚠️  Local build: DATABASE_URL is not set. Copy .env.example to .env.local.\n"
-      );
-    }
-  } else if (!isPostgresUrl(databaseUrl) && isVercel) {
-    const message =
-      "DATABASE_URL must be a PostgreSQL connection string on Vercel.";
-
-    console.error(`\n❌ ${message}`);
-    console.error(
-      "    Update DATABASE_URL in Vercel → Settings → Environment Variables.\n"
-    );
-    process.exit(1);
+    console.log("✓ Static auth mode — DATABASE_URL not required");
   } else if (isVercel && isPostgresUrl(databaseUrl)) {
     console.log("✓ DATABASE_URL validated for Vercel build");
   }

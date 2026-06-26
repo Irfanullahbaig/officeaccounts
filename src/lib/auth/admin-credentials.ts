@@ -7,8 +7,15 @@ const LEGACY_ADMIN_EMAILS = ["admin@company.com"];
 
 export function getDefaultAdminCredentials() {
   return {
-    email: (process.env.DEFAULT_ADMIN_EMAIL ?? DEFAULT_ADMIN_EMAIL).toLowerCase(),
-    password: process.env.DEFAULT_ADMIN_PASSWORD ?? DEFAULT_ADMIN_PASSWORD,
+    email: (
+      process.env.ADMIN_EMAIL ??
+      process.env.DEFAULT_ADMIN_EMAIL ??
+      DEFAULT_ADMIN_EMAIL
+    ).toLowerCase(),
+    password:
+      process.env.ADMIN_PASSWORD ??
+      process.env.DEFAULT_ADMIN_PASSWORD ??
+      DEFAULT_ADMIN_PASSWORD,
   };
 }
 

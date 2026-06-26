@@ -17,6 +17,11 @@ export async function logLoginActivity(
   success: boolean,
   failureReason?: string
 ) {
+  const databaseUrl = process.env.DATABASE_URL ?? "";
+  if (!databaseUrl || databaseUrl.includes("build@127.0.0.1")) {
+    return;
+  }
+
   try {
     await prisma.loginActivity.create({
       data: { email, success, failureReason },
