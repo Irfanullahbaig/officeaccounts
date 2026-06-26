@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { UsersManagement } from "@/components/users/users-management";
@@ -7,7 +8,9 @@ import { mapAllowedUser } from "@/lib/mappers";
 export default async function UsersPage() {
   await requireRole(["super_admin"]);
 
-  const rows = await prisma.allowedUser.findMany({ orderBy: { createdAt: "desc" } });
+  const rows = await queryDatabase([], () =>
+    prisma.allowedUser.findMany({ orderBy: { createdAt: "desc" } })
+  );
   const users = rows.map(mapAllowedUser);
 
   return (

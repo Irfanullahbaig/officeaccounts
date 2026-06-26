@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,16 +11,18 @@ import { mapLeadCommission } from "@/lib/mappers";
 export default async function CommissionsPage() {
   await requireRole(["super_admin", "finance_manager"]);
 
-  const [leads, coLeads] = await Promise.all([
-    prisma.leadCommission.findMany({
-      include: { leadOwner: true },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.coLeadCommission.findMany({
-      include: { coLead: true },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+  const [leads, coLeads] = await queryDatabase([[], []] as const, () =>
+    Promise.all([
+      prisma.leadCommission.findMany({
+        include: { leadOwner: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.coLeadCommission.findMany({
+        include: { coLead: true },
+        orderBy: { createdAt: "desc" },
+      }),
+    ])
+  );
 
   const leadRows = leads.map(mapLeadCommission);
   const coLeadRows = coLeads.map((c) => ({

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { SettingsForm } from "@/components/settings/settings-form";
 export default async function SettingsPage() {
   await requireRole(["super_admin"]);
 
-  const settings = await prisma.systemSetting.findMany();
+  const settings = await queryDatabase([], () => prisma.systemSetting.findMany());
 
   return (
     <div>

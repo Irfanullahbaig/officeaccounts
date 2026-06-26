@@ -14,23 +14,28 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   const session = await verifySessionToken(token);
   if (!session) return null;
 
+  const sessionUser: AuthUser = {
+    id: session.id,
+    email: session.email,
+    role: session.role,
+    employeeId: session.employeeId,
+    fullName: session.fullName,
+  };
+
   if (!isDatabaseConfigured()) {
-    return {
-      id: session.id,
-      email: session.email,
-      role: session.role,
-      employeeId: session.employeeId,
-      fullName: session.fullName,
-    };
+    return sessionUser;
   }
 
   try {
-    const allowedUser = await prisma.allowedUser.findUnique({
-      where: { id: session.id },
+    const allowedUser = await prisma.allowedUser.findFirst({
+      where: {
+        status: "active",
+        OR: [{ id: session.id }, { email: session.email }],
+      },
       include: { employee: true },
     });
 
-    if (!allowedUser || allowedUser.status !== "active") return null;
+    if (!allowedUser) return sessionUser;
 
     return {
       id: allowedUser.id,
@@ -39,14 +44,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       employeeId: allowedUser.employeeId,
       fullName: allowedUser.employee?.fullName ?? session.fullName,
     };
-  } catch {
-    return {
-      id: session.id,
-      email: session.email,
-      role: session.role,
-      employeeId: session.employeeId,
-      fullName: session.fullName,
-    };
+  } catch (error) {
+    console.error("getCurrentUser database lookup failed:", error);
+    return sessionUser;
   }
 }
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { RevenueTable, AddRevenueDialog } from "@/components/revenue/revenue-table";
@@ -8,10 +9,12 @@ import { mapIncomeEntry } from "@/lib/mappers";
 export default async function RevenuePage() {
   await requireRole(["super_admin", "finance_manager"]);
 
-  const rows = await prisma.incomeEntry.findMany({
-    include: { employee: true },
-    orderBy: { paymentReceivedDate: "desc" },
-  });
+  const rows = await queryDatabase([], () =>
+    prisma.incomeEntry.findMany({
+      include: { employee: true },
+      orderBy: { paymentReceivedDate: "desc" },
+    })
+  );
   const revenues = rows.map(mapIncomeEntry);
 
   return (

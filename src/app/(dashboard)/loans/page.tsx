@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -17,10 +18,12 @@ export default async function LoansPage({
   await requireRole(["super_admin", "admin", "finance_manager"]);
   const { tab } = await searchParams;
 
-  const rows = await prisma.loan.findMany({
-    include: { employee: true },
-    orderBy: [{ loanDate: "asc" }, { createdAt: "asc" }],
-  });
+  const rows = await queryDatabase([], () =>
+    prisma.loan.findMany({
+      include: { employee: true },
+      orderBy: [{ loanDate: "asc" }, { createdAt: "asc" }],
+    })
+  );
   const loans = rows.map(mapLoan);
 
   const activeLoans = loans.filter((l) => l.status === "active");

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import {
@@ -10,10 +11,12 @@ import { EmptyState } from "@/components/shared/empty-state";
 export default async function AuditLogsPage() {
   await requireRole(["super_admin", "finance_manager"]);
 
-  const logs = await prisma.auditLog.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const logs = await queryDatabase([], () =>
+    prisma.auditLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    })
+  );
 
   return (
     <div>

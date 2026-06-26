@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmployeesTable } from "@/components/employees/employees-table";
@@ -9,7 +10,9 @@ import { mapEmployee } from "@/lib/mappers";
 export default async function EmployeesPage() {
   await requireRole(["super_admin", "finance_manager"]);
 
-  const rows = await prisma.employee.findMany({ orderBy: { createdAt: "desc" } });
+  const rows = await queryDatabase([], () =>
+    prisma.employee.findMany({ orderBy: { createdAt: "desc" } })
+  );
   const employees = rows.map(mapEmployee);
 
   return (

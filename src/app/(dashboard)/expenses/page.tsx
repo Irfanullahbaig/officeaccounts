@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { ExpenseTable, AddExpenseDialog } from "@/components/expenses/expense-table";
@@ -8,7 +9,9 @@ import { mapExpense } from "@/lib/mappers";
 export default async function ExpensesPage() {
   await requireRole(["super_admin", "finance_manager"]);
 
-  const rows = await prisma.expense.findMany({ orderBy: { expenseDate: "desc" } });
+  const rows = await queryDatabase([], () =>
+    prisma.expense.findMany({ orderBy: { expenseDate: "desc" } })
+  );
   const expenses = rows.map(mapExpense);
 
   return (

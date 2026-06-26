@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shared/page-header";
 import { SavingsTable } from "@/components/savings/savings-table";
@@ -11,10 +12,12 @@ import { mapSavings } from "@/lib/mappers";
 export default async function SavingsPage() {
   await requireRole(["super_admin", "finance_manager"]);
 
-  const rows = await prisma.savingsAccount.findMany({
-    include: { employee: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const rows = await queryDatabase([], () =>
+    prisma.savingsAccount.findMany({
+      include: { employee: true },
+      orderBy: { createdAt: "desc" },
+    })
+  );
   const accounts = rows.map(mapSavings);
   const totalBalance = accounts.reduce((s, a) => s + Number(a.current_balance), 0);
 

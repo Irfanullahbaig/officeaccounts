@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { queryDatabase } from "@/lib/db/query";
 import { getCurrentUser } from "@/lib/auth/session";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { formatCurrency, cnStatusColor, getMonthName } from "@/lib/utils/format";
@@ -24,17 +25,21 @@ export default async function MyPortalPage() {
 
   const employeeId = user.employeeId;
 
-  const [employee, payrolls, savings, loans, commissions] = await Promise.all([
-    prisma.employee.findUnique({ where: { id: employeeId } }),
-    prisma.payroll.findMany({
-      where: { employeeId },
-      orderBy: [{ periodYear: "desc" }, { periodMonth: "desc" }],
-      take: 6,
-    }),
-    prisma.savingsAccount.findUnique({ where: { employeeId } }),
-    prisma.loan.findMany({ where: { employeeId } }),
-    prisma.leadCommission.findMany({ where: { leadOwnerId: employeeId } }),
-  ]);
+  const [employee, payrolls, savings, loans, commissions] = await queryDatabase(
+    [null, [], null, [], []] as const,
+    () =>
+      Promise.all([
+        prisma.employee.findUnique({ where: { id: employeeId } }),
+        prisma.payroll.findMany({
+          where: { employeeId },
+          orderBy: [{ periodYear: "desc" }, { periodMonth: "desc" }],
+          take: 6,
+        }),
+        prisma.savingsAccount.findUnique({ where: { employeeId } }),
+        prisma.loan.findMany({ where: { employeeId } }),
+        prisma.leadCommission.findMany({ where: { leadOwnerId: employeeId } }),
+      ])
+  );
 
   const totalLoanOutstanding = loans
     .filter((l) => l.status === "active")
