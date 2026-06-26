@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,10 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
-import { createClient } from "@/lib/supabase/client";
-import { completeLoginAfterAuth } from "@/lib/auth/login";
-import { OAuthSignIn } from "@/components/auth/oauth-sign-in";
-import { formatUnregisteredKeyHelp } from "@/lib/supabase/validate-keys";
+import { loginStaff } from "@/lib/auth/login";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid company email"),
@@ -23,9 +20,6 @@ const loginSchema = z.object({
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
-
-const CONFIG_ERROR =
-  "Server configuration error. Ensure SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, DATABASE_URL, and NEXT_PUBLIC_* Supabase variables are set in Vercel.";
 
 export default function LoginPage() {
   return (
@@ -37,7 +31,6 @@ export default function LoginPage() {
 
 function LoginPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -46,55 +39,21 @@ function LoginPageContent() {
     defaultValues: { email: "", password: "" },
   });
 
-  useEffect(() => {
-    const authError = searchParams.get("error");
-    if (authError === "auth_callback_failed") {
-      setError("Sign in failed. Please try again.");
-    } else if (authError === "access_denied") {
-      setError(ACCESS_DENIED_MESSAGE);
-    }
-  }, [searchParams]);
-
   async function onSubmit(data: LoginForm) {
     setLoading(true);
     setError(null);
 
-    try {
-      const supabase = createClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: data.email.toLowerCase(),
-        password: data.password,
-      });
+    const result = await loginStaff(data.email, data.password);
 
-      if (signInError) {
-        const msg = signInError.message;
-        setError(
-          msg.includes("Unregistered API key")
-            ? formatUnregisteredKeyHelp()
-            : msg.includes("Invalid login credentials")
-              ? "Invalid email or password. Use admin@northnine.pk with your admin password."
-              : msg
-        );
-        setLoading(false);
-        return;
-      }
-
-      const result = await completeLoginAfterAuth();
-      if (!result.ok) {
-        setError(result.error === ACCESS_DENIED_MESSAGE ? ACCESS_DENIED_MESSAGE : result.error);
-        setLoading(false);
-        return;
-      }
-
-      const dest = result.role === "employee" ? "/my" : "/dashboard";
-      router.push(dest);
-      router.refresh();
-    } catch {
-      setError(CONFIG_ERROR);
+    if (!result.ok) {
+      setError(result.error === ACCESS_DENIED_MESSAGE ? ACCESS_DENIED_MESSAGE : result.error);
       setLoading(false);
       return;
     }
 
+    const dest = result.role === "employee" ? "/my" : "/dashboard";
+    router.push(dest);
+    router.refresh();
     setLoading(false);
   }
 
@@ -153,7 +112,6 @@ function LoginPageContent() {
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Sign In
               </Button>
-              <OAuthSignIn portal="staff" />
             </form>
             <p className="text-xs text-muted-foreground text-center mt-6">
               No public registration. Contact your Super Admin for access.

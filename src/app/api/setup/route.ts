@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
+    if (!process.env.DATABASE_URL) {
       return NextResponse.json(
         { error: "DATABASE_URL is not configured" },
         { status: 500 }
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: "Database initialized and default admin synced to Supabase Auth",
+      message: "Database initialized and default admin created",
       adminEmail: "admin@northnine.pk",
     });
   } catch (error) {

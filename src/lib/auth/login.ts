@@ -1,9 +1,9 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { logLoginActivity } from "@/lib/auth/bootstrap-admin";
+import { setSessionCookie, clearSessionCookie } from "@/lib/auth/cookies";
 import {
   ACCESS_DENIED_MESSAGE,
   DIRECTOR_ACCESS_DENIED_MESSAGE,
@@ -11,69 +11,64 @@ import {
 } from "@/lib/auth/permissions";
 import type { UserRole } from "@/types/database";
 
-async function finalizeLogin(email: string, allowedUserId: string, supabaseUserId: string) {
-  await prisma.allowedUser
-    .update({
-      where: { id: allowedUserId },
-      data: { lastLoginAt: new Date() },
-    })
-    .catch(() => undefined);
-
+async function authenticateUser(email: string, password: string) {
+  const normalizedEmail = email.toLowerCase();
   const allowedUser = await prisma.allowedUser.findUnique({
-    where: { id: allowedUserId },
-    include: { employee: true },
-  });
-  if (!allowedUser) {
-    throw new Error("User record not found.");
-  }
-
-  const admin = createAdminClient();
-  await admin.auth.admin.updateUserById(supabaseUserId, {
-    app_metadata: {
-      role: allowedUser.role,
-      employeeId: allowedUser.employeeId,
-      fullName: allowedUser.employee?.fullName ?? null,
-      allowedUserId: allowedUser.id,
-    },
-  });
-
-  return allowedUser;
-}
-
-export async function completeLoginAfterAuth() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user?.email) {
-    return { ok: false as const, error: "Authentication failed." };
-  }
-
-  const email = user.email.toLowerCase();
-  const allowedUser = await prisma.allowedUser.findUnique({
-    where: { email },
+    where: { email: normalizedEmail },
     include: { employee: true },
   });
 
   if (!allowedUser || allowedUser.status !== "active") {
-    await logLoginActivity(email, false, ACCESS_DENIED_MESSAGE);
-    await supabase.auth.signOut();
+    await logLoginActivity(normalizedEmail, false, ACCESS_DENIED_MESSAGE);
     return { ok: false as const, error: ACCESS_DENIED_MESSAGE };
   }
 
+  const passwordValid = await bcrypt.compare(password, allowedUser.passwordHash);
+  if (!passwordValid) {
+    await logLoginActivity(normalizedEmail, false, "Invalid password");
+    return { ok: false as const, error: "Invalid email or password." };
+  }
+
+  return { ok: true as const, allowedUser };
+}
+
+async function finalizeLogin(allowedUser: {
+  id: string;
+  email: string;
+  role: string;
+  employeeId: string | null;
+  employee: { fullName: string } | null;
+}) {
+  await prisma.allowedUser.update({
+    where: { id: allowedUser.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  await setSessionCookie({
+    id: allowedUser.id,
+    email: allowedUser.email,
+    role: allowedUser.role as UserRole,
+    employeeId: allowedUser.employeeId,
+    fullName: allowedUser.employee?.fullName ?? null,
+  });
+}
+
+export async function loginStaff(email: string, password: string) {
+  const result = await authenticateUser(email, password);
+  if (!result.ok) return result;
+
+  const { allowedUser } = result;
+
   if (allowedUser.role === "director") {
-    await logLoginActivity(email, false, "Director attempted staff login");
-    await supabase.auth.signOut();
+    await logLoginActivity(allowedUser.email, false, "Director attempted staff login");
     return {
       ok: false as const,
       error: `Directors must sign in through the Director Portal at ${DIRECTOR_PORTAL_LOGIN}`,
     };
   }
 
-  await logLoginActivity(email, true);
-  await finalizeLogin(email, allowedUser.id, user.id);
+  await logLoginActivity(allowedUser.email, true);
+  await finalizeLogin(allowedUser);
 
   return {
     ok: true as const,
@@ -81,31 +76,28 @@ export async function completeLoginAfterAuth() {
   };
 }
 
-export async function completeDirectorLoginAfterAuth() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user?.email) {
-    return { ok: false as const, error: "Authentication failed." };
+export async function loginDirector(email: string, password: string) {
+  const result = await authenticateUser(email, password);
+  if (!result.ok) {
+    if (result.error === ACCESS_DENIED_MESSAGE) {
+      return { ok: false as const, error: DIRECTOR_ACCESS_DENIED_MESSAGE };
+    }
+    return result;
   }
 
-  const email = user.email.toLowerCase();
-  const allowedUser = await prisma.allowedUser.findUnique({
-    where: { email },
-    include: { employee: true },
-  });
+  const { allowedUser } = result;
 
-  if (!allowedUser || allowedUser.status !== "active" || allowedUser.role !== "director") {
-    await logLoginActivity(email, false, DIRECTOR_ACCESS_DENIED_MESSAGE);
-    await supabase.auth.signOut();
+  if (allowedUser.role !== "director") {
+    await logLoginActivity(allowedUser.email, false, DIRECTOR_ACCESS_DENIED_MESSAGE);
     return { ok: false as const, error: DIRECTOR_ACCESS_DENIED_MESSAGE };
   }
 
-  await logLoginActivity(email, true);
-  await finalizeLogin(email, allowedUser.id, user.id);
+  await logLoginActivity(allowedUser.email, true);
+  await finalizeLogin(allowedUser);
 
   return { ok: true as const, role: "director" as const };
+}
+
+export async function logout() {
+  await clearSessionCookie();
 }

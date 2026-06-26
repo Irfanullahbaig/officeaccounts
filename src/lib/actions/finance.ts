@@ -11,11 +11,6 @@ import {
   startOfDayUTC,
 } from "@/lib/loans/ledger";
 import { getLoanDisplayName } from "@/lib/loans/display";
-import {
-  deleteSupabaseAuthUser,
-  updateSupabaseAuthMetadata,
-  upsertSupabaseAuthUser,
-} from "@/lib/auth/supabase-users";
 import type {
   UserRole,
   ExpenseCategory,
@@ -1001,11 +996,6 @@ export async function addAllowedUser(data: {
 
   const passwordHash = await bcrypt.hash(data.password, 12);
 
-  await upsertSupabaseAuthUser(email, data.password, {
-    role: data.role,
-    employeeId: null,
-  });
-
   const allowedUser = await prisma.allowedUser.create({
     data: {
       email,
@@ -1013,12 +1003,6 @@ export async function addAllowedUser(data: {
       status: "active",
       passwordHash,
     },
-  });
-
-  await updateSupabaseAuthMetadata(email, {
-    role: data.role,
-    employeeId: allowedUser.employeeId,
-    allowedUserId: allowedUser.id,
   });
 
   await createAuditLog({
@@ -1037,7 +1021,6 @@ export async function removeAllowedUser(id: string) {
   const allowedUser = await prisma.allowedUser.findUnique({ where: { id } });
   if (!allowedUser) throw new Error("User not found");
 
-  await deleteSupabaseAuthUser(allowedUser.email);
   await prisma.allowedUser.delete({ where: { id } });
   revalidatePath("/users");
   return { success: true };
@@ -1049,13 +1032,6 @@ export async function updateUserRole(id: string, role: UserRole) {
     where: { id },
     data: { role },
     include: { employee: true },
-  });
-
-  await updateSupabaseAuthMetadata(allowedUser.email, {
-    role: allowedUser.role as UserRole,
-    employeeId: allowedUser.employeeId,
-    fullName: allowedUser.employee?.fullName ?? null,
-    allowedUserId: allowedUser.id,
   });
 
   revalidatePath("/users");

@@ -27,73 +27,32 @@ export function ensureDatabaseUrlForGenerate() {
 
   process.env.DATABASE_URL = PRISMA_GENERATE_PLACEHOLDER_URL;
   console.warn(
-    "\n⚠️  DATABASE_URL is not set. Using a placeholder for prisma generate only."
-  );
-  console.warn(
-    "    Set DATABASE_URL to your Supabase connection string in Vercel → Environment Variables.\n"
+    "\n⚠️  DATABASE_URL is not set. Using a placeholder for prisma generate only.\n"
   );
   return process.env.DATABASE_URL;
 }
 
-const SUPABASE_VARS = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-];
-
-function getSupabaseSecretKey() {
-  return process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
-}
-
-function getSupabasePublicKey() {
-  return (
-    process.env.SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
-}
-
 if (isBuild) {
   const databaseUrl = process.env.DATABASE_URL;
-  const missingSupabase = SUPABASE_VARS.filter((key) => !process.env[key]);
-  if (!getSupabasePublicKey()) {
-    missingSupabase.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
-  }
-  if (!getSupabaseSecretKey()) {
-    missingSupabase.push("SUPABASE_SECRET_KEY");
-  }
-
-  if (missingSupabase.length > 0 && isVercel) {
-    console.warn(
-      `\n⚠️  Vercel build: missing Supabase auth variables: ${missingSupabase.join(", ")}`
-    );
-    console.warn("    Login requires Supabase Auth keys at runtime.\n");
-  }
 
   if (!databaseUrl) {
     if (isVercel) {
-      console.warn("\n⚠️  Vercel build: DATABASE_URL is not configured yet.");
-      console.warn(
-        "    Add your Supabase database URL from Project Settings → Database.\n"
-      );
+      console.warn("\n⚠️  Vercel build: DATABASE_URL is not configured yet.\n");
     } else {
       console.warn(
         "\n⚠️  Local build: DATABASE_URL is not set. Copy .env.example to .env.local.\n"
       );
     }
-  } else if (!isPostgresUrl(databaseUrl)) {
+  } else if (!isPostgresUrl(databaseUrl) && isVercel) {
     const message =
-      "DATABASE_URL must be a Supabase PostgreSQL connection string (postgres:// or postgresql://).";
+      "DATABASE_URL must be a PostgreSQL connection string on Vercel.";
 
-    if (isVercel) {
-      console.error(`\n❌ ${message}`);
-      console.error(
-        "    Update DATABASE_URL in Vercel → Settings → Environment Variables.\n"
-      );
-      process.exit(1);
-    }
-
-    console.warn(`\n⚠️  ${message}`);
-    console.warn("    SQLite/file URLs are not supported on Vercel.\n");
-  } else if (isVercel) {
+    console.error(`\n❌ ${message}`);
+    console.error(
+      "    Update DATABASE_URL in Vercel → Settings → Environment Variables.\n"
+    );
+    process.exit(1);
+  } else if (isVercel && isPostgresUrl(databaseUrl)) {
     console.log("✓ DATABASE_URL validated for Vercel build");
   }
 }

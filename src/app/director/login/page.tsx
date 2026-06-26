@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,9 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, Loader2 } from "lucide-react";
 import { DIRECTOR_ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
-import { createClient } from "@/lib/supabase/client";
-import { completeDirectorLoginAfterAuth } from "@/lib/auth/login";
-import { OAuthSignIn } from "@/components/auth/oauth-sign-in";
+import { loginDirector } from "@/lib/auth/login";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -23,9 +21,6 @@ const loginSchema = z.object({
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
-
-const CONFIG_ERROR =
-  "Server configuration error. Ensure Supabase environment variables are set.";
 
 export default function DirectorLoginPage() {
   return (
@@ -49,40 +44,20 @@ function DirectorLoginContent() {
     setLoading(true);
     setError(null);
 
-    try {
-      const supabase = createClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: data.email.toLowerCase(),
-        password: data.password,
-      });
+    const result = await loginDirector(data.email, data.password);
 
-      if (signInError) {
-        setError(
-          signInError.message.includes("Invalid login credentials")
-            ? "Invalid email or password."
-            : signInError.message
-        );
-        setLoading(false);
-        return;
-      }
-
-      const result = await completeDirectorLoginAfterAuth();
-      if (!result.ok) {
-        setError(
-          result.error === DIRECTOR_ACCESS_DENIED_MESSAGE
-            ? DIRECTOR_ACCESS_DENIED_MESSAGE
-            : result.error
-        );
-        setLoading(false);
-        return;
-      }
-
-      router.push("/director/dashboard");
-      router.refresh();
-    } catch {
-      setError(CONFIG_ERROR);
+    if (!result.ok) {
+      setError(
+        result.error === DIRECTOR_ACCESS_DENIED_MESSAGE
+          ? DIRECTOR_ACCESS_DENIED_MESSAGE
+          : result.error
+      );
+      setLoading(false);
+      return;
     }
 
+    router.push("/director/dashboard");
+    router.refresh();
     setLoading(false);
   }
 
@@ -136,7 +111,6 @@ function DirectorLoginContent() {
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Access Portal
               </Button>
-              <OAuthSignIn portal="director" />
             </form>
             <p className="text-xs text-muted-foreground text-center mt-6">
               Staff or admin?{" "}

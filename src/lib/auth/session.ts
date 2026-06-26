@@ -1,44 +1,31 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import type { AuthUser, UserRole } from "@/types/database";
 import { isReadOnlyRole } from "@/lib/auth/permissions";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session-token";
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  if (!token) return null;
 
-  if (!user?.email) return null;
+  const session = await verifySessionToken(token);
+  if (!session) return null;
 
-  const metadata = user.app_metadata ?? {};
-  let role = metadata.role as UserRole | undefined;
-  let employeeId = (metadata.employeeId as string | null | undefined) ?? null;
-  let fullName = (metadata.fullName as string | null | undefined) ?? null;
-  let allowedUserId = metadata.allowedUserId as string | undefined;
+  const allowedUser = await prisma.allowedUser.findUnique({
+    where: { id: session.id },
+    include: { employee: true },
+  });
 
-  if (!role || !allowedUserId) {
-    const allowedUser = await prisma.allowedUser.findUnique({
-      where: { email: user.email.toLowerCase() },
-      include: { employee: true },
-    });
-
-    if (!allowedUser || allowedUser.status !== "active") return null;
-
-    role = allowedUser.role as UserRole;
-    employeeId = allowedUser.employeeId;
-    fullName = allowedUser.employee?.fullName ?? null;
-    allowedUserId = allowedUser.id;
-  }
+  if (!allowedUser || allowedUser.status !== "active") return null;
 
   return {
-    id: allowedUserId,
-    email: user.email,
-    role,
-    employeeId,
-    fullName,
+    id: allowedUser.id,
+    email: allowedUser.email,
+    role: allowedUser.role as UserRole,
+    employeeId: allowedUser.employeeId,
+    fullName: allowedUser.employee?.fullName ?? session.fullName,
   };
 }
 
