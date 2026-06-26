@@ -1,27 +1,77 @@
-import NextAuth from "next-auth";
-import { authConfig } from "@/auth.config";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
+import { isDirector } from "@/lib/auth/permissions";
+import type { UserRole } from "@/types/database";
 
-const { auth } = NextAuth(authConfig);
+const PUBLIC_ROUTES = ["/login", "/access-denied", "/auth", "/api/setup", "/director/login"];
 
-const PUBLIC_ROUTES = ["/login", "/access-denied", "/api/auth", "/api/setup"];
+const ADMIN_PORTAL_PREFIXES = [
+  "/dashboard",
+  "/employees",
+  "/payroll",
+  "/savings",
+  "/loans",
+  "/commissions",
+  "/revenue",
+  "/expenses",
+  "/reports",
+  "/audit-logs",
+  "/users",
+  "/settings",
+  "/my",
+];
 
-export default auth((request) => {
+function isDirectorRoute(pathname: string) {
+  return pathname === "/director" || pathname.startsWith("/director/");
+}
+
+function isAdminPortalRoute(pathname: string) {
+  return ADMIN_PORTAL_PREFIXES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+}
+
+export async function middleware(request: NextRequest) {
+  const { supabaseResponse, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_ROUTES.some((r) => pathname.startsWith(r));
-  const session = request.auth;
+  const isPublic = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+  const role = user?.app_metadata?.role as UserRole | undefined;
+  const director = role ? isDirector(role) : false;
 
-  if (!session?.user && !isPublic) {
+  if (isDirectorRoute(pathname)) {
+    if (pathname === "/director/login") {
+      if (user && director) {
+        return NextResponse.redirect(new URL("/director/dashboard", request.url));
+      }
+      return supabaseResponse;
+    }
+
+    if (!user || !director) {
+      return NextResponse.redirect(new URL("/director/login", request.url));
+    }
+
+    if (pathname === "/director") {
+      return NextResponse.redirect(new URL("/director/dashboard", request.url));
+    }
+
+    return supabaseResponse;
+  }
+
+  if (!user && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (session?.user && pathname === "/login") {
-    const dest = session.user.role === "employee" ? "/my" : "/dashboard";
+  if (user && director && (pathname === "/login" || isAdminPortalRoute(pathname) || pathname === "/")) {
+    return NextResponse.redirect(new URL("/director/dashboard", request.url));
+  }
+
+  if (user && pathname === "/login") {
+    const dest = role === "employee" ? "/my" : "/dashboard";
     return NextResponse.redirect(new URL(dest, request.url));
   }
 
-  if (session?.user && !isPublic) {
-    const role = session.user.role;
+  if (user && !isPublic && !director) {
     const adminRoutes = ["/users", "/settings"];
     const financeRoutes = [
       "/employees",
@@ -35,13 +85,13 @@ export default auth((request) => {
       "/audit-logs",
     ];
 
-    if (adminRoutes.some((r) => pathname.startsWith(r)) && role !== "super_admin") {
+    if (adminRoutes.some((route) => pathname.startsWith(route)) && role !== "super_admin") {
       return NextResponse.redirect(
         new URL(role === "employee" ? "/my" : "/dashboard", request.url)
       );
     }
 
-    if (financeRoutes.some((r) => pathname.startsWith(r)) && role === "employee") {
+    if (financeRoutes.some((route) => pathname.startsWith(route)) && role === "employee") {
       return NextResponse.redirect(new URL("/my", request.url));
     }
 
@@ -52,8 +102,8 @@ export default auth((request) => {
     }
   }
 
-  return NextResponse.next();
-});
+  return supabaseResponse;
+}
 
 export const config = {
   matcher: [

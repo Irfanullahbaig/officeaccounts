@@ -1,8 +1,7 @@
 "use client";
 
-import { signOut } from "next-auth/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -36,6 +35,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { AuthUser } from "@/types/database";
 import { ROLE_LABELS, isFinance, isAdmin } from "@/lib/auth/permissions";
+import { createClient } from "@/lib/supabase/client";
 
 const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["super_admin", "finance_manager"] },
@@ -58,10 +58,14 @@ const adminNav = [
 
 function AppSidebar({ user }: { user: AuthUser }) {
   const pathname = usePathname();
+  const router = useRouter();
   const visibleNav = mainNav.filter((item) => item.roles.includes(user.role));
 
   async function handleLogout() {
-    await signOut({ redirectTo: "/login" });
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
   }
 
   const initials = user.fullName

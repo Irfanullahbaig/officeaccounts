@@ -10,6 +10,12 @@ import {
   initialAccrualDate,
   startOfDayUTC,
 } from "@/lib/loans/ledger";
+import { getLoanDisplayName } from "@/lib/loans/display";
+import {
+  deleteSupabaseAuthUser,
+  updateSupabaseAuthMetadata,
+  upsertSupabaseAuthUser,
+} from "@/lib/auth/supabase-users";
 import type {
   UserRole,
   ExpenseCategory,
@@ -17,6 +23,9 @@ import type {
 
 const COMPANY_SHARE_PERCENT = 30;
 const FREELANCER_SHARE_PERCENT = 70;
+const PRINCIPAL_TOLERANCE = 0.01;
+
+type FinanceTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 export async function createEmployee(data: {
   employee_code: string;
@@ -105,6 +114,7 @@ export async function createIncomeEntry(data: {
   currency: "PKR" | "USD" | "EUR" | "GBP" | "AED";
   savings_contribution?: number;
   loan_payment?: number;
+  target_loan_id?: string;
   notes?: string;
   lead_assignments?: CommissionInput[];
   co_lead_assignments?: CommissionInput[];
@@ -115,6 +125,7 @@ export async function createIncomeEntry(data: {
   const projectValue = round2(data.project_value);
   const savingsContribution = round2(data.savings_contribution ?? 0);
   const requestedLoanPayment = round2(data.loan_payment ?? 0);
+  const targetLoanId = data.target_loan_id;
   const leadAssignments = normalizeAssignments(data.lead_assignments);
   const coLeadAssignments = normalizeAssignments(data.co_lead_assignments);
 
@@ -264,15 +275,25 @@ export async function createIncomeEntry(data: {
     }
 
     let loanPaymentApplied = 0;
+    let loanOverflowToSavings = 0;
     if (requestedLoanPayment > 0) {
-      const loans = await tx.loan.findMany({
+      const activeLoans = await tx.loan.findMany({
         where: { employeeId: employee.id, status: "active" },
-        orderBy: { loanDate: "asc" },
+        orderBy: [{ loanDate: "asc" }, { createdAt: "asc" }],
       });
+
+      if (activeLoans.length > 1 && !targetLoanId) {
+        throw new Error("Select which loan this repayment applies to");
+      }
+      if (targetLoanId && !activeLoans.some((loan) => loan.id === targetLoanId)) {
+        throw new Error("Selected loan is not active for this employee");
+      }
+
+      const orderedLoans = orderLoansForRepayment(activeLoans, targetLoanId);
       const paymentDate = startOfDayUTC(new Date(data.payment_received_date));
       let remaining = requestedLoanPayment;
 
-      for (const loan of loans) {
+      for (const loan of orderedLoans) {
         if (remaining <= 0) break;
 
         const lastAccrual = loan.lastAccrualDate ?? initialAccrualDate(loan.loanDate);
@@ -323,16 +344,21 @@ export async function createIncomeEntry(data: {
         const interestPart = round2(allocation.interestPaid);
         const nextPrincipal = round2(allocation.newPrincipal);
         const nextAccrued = round2(allocation.newAccruedInterest);
+        const principalSettled = isPrincipalCleared(nextPrincipal);
+        const waivedOnSettlement =
+          principalSettled && nextAccrued > PRINCIPAL_TOLERANCE ? round2(nextAccrued) : 0;
+        const finalPrincipal = principalSettled ? 0 : nextPrincipal;
+        const finalAccrued = principalSettled ? 0 : nextAccrued;
 
         await tx.loan.update({
           where: { id: loan.id },
           data: {
-            remainingPrincipal: nextPrincipal,
-            accruedInterest: nextAccrued,
+            remainingPrincipal: finalPrincipal,
+            accruedInterest: finalAccrued,
             totalPrincipalPaid: { increment: principalPart },
             totalInterestPaid: { increment: interestPart },
-            status: nextPrincipal <= 0 && nextAccrued <= 0 ? "paid" : "active",
-            closedAt: nextPrincipal <= 0 && nextAccrued <= 0 ? paymentDate : null,
+            status: principalSettled ? "paid" : "active",
+            closedAt: principalSettled ? paymentDate : null,
           },
         });
         await tx.loanRepayment.create({
@@ -342,8 +368,8 @@ export async function createIncomeEntry(data: {
             amountPaid: payment,
             principalPaid: principalPart,
             interestPaid: interestPart,
-            remainingPrincipal: nextPrincipal,
-            remainingInterest: nextAccrued,
+            remainingPrincipal: finalPrincipal,
+            remainingInterest: finalAccrued,
             paymentSource: "income_entry",
             notes: `From income entry ${incomeEntry.id}`,
             createdByEmail: user?.email,
@@ -368,47 +394,73 @@ export async function createIncomeEntry(data: {
             amount: payment,
             interestPortion: interestPart,
             principalPortion: principalPart,
-            remainingPrincipal: nextPrincipal,
-            accruedInterestAfter: nextAccrued,
+            remainingPrincipal: finalPrincipal,
+            accruedInterestAfter: finalAccrued,
             remarks: `Income entry payment (${data.project_name})`,
             createdByEmail: user?.email,
           },
         });
+
+        if (principalSettled) {
+          if (waivedOnSettlement > PRINCIPAL_TOLERANCE) {
+            await tx.loanLedgerEntry.create({
+              data: {
+                loanId: loan.id,
+                transactionDate: paymentDate,
+                transactionType: "adjustment",
+                amount: 0,
+                interestPortion: 0,
+                principalPortion: 0,
+                remainingPrincipal: 0,
+                accruedInterestAfter: 0,
+                remarks: `Accrued interest cleared — principal fully repaid (Rs ${waivedOnSettlement.toLocaleString()} waived)`,
+                createdByEmail: user?.email,
+              },
+            });
+          }
+          await tx.loanLedgerEntry.create({
+            data: {
+              loanId: loan.id,
+              transactionDate: paymentDate,
+              transactionType: "loan_closed",
+              amount: 0,
+              remainingPrincipal: 0,
+              accruedInterestAfter: 0,
+              remarks:
+                waivedOnSettlement > PRINCIPAL_TOLERANCE
+                  ? "Loan closed — principal settled, remaining accrued interest waived"
+                  : "Loan fully settled",
+              createdByEmail: user?.email,
+            },
+          });
+        }
+
         remaining = round2(remaining - payment);
         loanPaymentApplied = round2(loanPaymentApplied + payment);
       }
+
+      if (remaining > 0) {
+        loanOverflowToSavings = remaining;
+      }
     }
 
+    const paymentReceivedDate = new Date(data.payment_received_date);
     if (savingsContribution > 0) {
-      let account = await tx.savingsAccount.findUnique({
-        where: { employeeId: employee.id },
+      await depositSavingsInTx(tx, {
+        employeeId: employee.id,
+        amount: savingsContribution,
+        paymentDate: paymentReceivedDate,
+        notes: `Income entry ${incomeEntry.id}`,
+        userEmail: user?.email,
       });
-      if (!account) {
-        account = await tx.savingsAccount.create({
-          data: {
-            employeeId: employee.id,
-            savingsType: "manual",
-            currentBalance: 0,
-            isActive: true,
-          },
-        });
-      }
-      const balanceAfter = round2(account.currentBalance + savingsContribution);
-      await tx.savingsAccount.update({
-        where: { id: account.id },
-        data: { currentBalance: balanceAfter },
-      });
-      await tx.savingsTransaction.create({
-        data: {
-          savingsAccountId: account.id,
-          employeeId: employee.id,
-          transactionType: "deposit",
-          amount: savingsContribution,
-          balanceAfter,
-          notes: `Income entry ${incomeEntry.id}`,
-          transactionDate: new Date(data.payment_received_date),
-          createdByEmail: user?.email,
-        },
+    }
+    if (loanOverflowToSavings > 0) {
+      await depositSavingsInTx(tx, {
+        employeeId: employee.id,
+        amount: loanOverflowToSavings,
+        paymentDate: paymentReceivedDate,
+        notes: `Excess loan repayment — income entry ${incomeEntry.id}`,
+        userEmail: user?.email,
       });
     }
 
@@ -453,6 +505,18 @@ export async function createIncomeEntry(data: {
               currency: data.currency,
               transactionDate: new Date(data.payment_received_date),
               description: "Savings contribution",
+              createdByEmail: user?.email,
+            }]
+          : []),
+        ...(loanOverflowToSavings > 0
+          ? [{
+              employeeId: employee.id,
+              incomeEntryId: incomeEntry.id,
+              type: "savings_deposit" as const,
+              amount: loanOverflowToSavings,
+              currency: data.currency,
+              transactionDate: new Date(data.payment_received_date),
+              description: "Excess loan repayment transferred to savings",
               createdByEmail: user?.email,
             }]
           : []),
@@ -578,6 +642,7 @@ export async function createIncomeEntry(data: {
   revalidatePath("/revenue");
   revalidatePath("/employees");
   revalidatePath("/loans");
+  revalidatePath("/savings");
   revalidatePath("/dashboard");
   revalidatePath("/reports");
   return { success: true, incomeEntryId: result.id };
@@ -593,6 +658,7 @@ export type IncomeEntryInput = {
   currency: "PKR" | "USD" | "EUR" | "GBP" | "AED";
   savings_contribution?: number;
   loan_payment?: number;
+  target_loan_id?: string;
   notes?: string;
   lead_assignments?: CommissionInput[];
   co_lead_assignments?: CommissionInput[];
@@ -776,29 +842,38 @@ async function reverseIncomeEntryTx(
     });
   }
 
-  if (entry.savingsContribution > 0) {
+  const savingsDeposits = await tx.savingsTransaction.findMany({
+    where: {
+      employeeId: entry.employeeId,
+      transactionType: "deposit",
+      notes: { contains: entry.id },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const deposit of savingsDeposits) {
     const account = await tx.savingsAccount.findUnique({
-      where: { employeeId: entry.employeeId },
+      where: { id: deposit.savingsAccountId },
     });
-    if (account) {
-      const balanceAfter = round2(account.currentBalance - entry.savingsContribution);
-      await tx.savingsAccount.update({
-        where: { id: account.id },
-        data: { currentBalance: balanceAfter },
-      });
-      await tx.savingsTransaction.create({
-        data: {
-          savingsAccountId: account.id,
-          employeeId: entry.employeeId,
-          transactionType: "withdrawal",
-          amount: entry.savingsContribution,
-          balanceAfter,
-          notes: `Reversal of income entry ${entry.id}`,
-          transactionDate: new Date(),
-          createdByEmail: userEmail,
-        },
-      });
-    }
+    if (!account) continue;
+
+    const balanceAfter = round2(account.currentBalance - deposit.amount);
+    await tx.savingsAccount.update({
+      where: { id: account.id },
+      data: { currentBalance: balanceAfter },
+    });
+    await tx.savingsTransaction.create({
+      data: {
+        savingsAccountId: account.id,
+        employeeId: entry.employeeId,
+        transactionType: "withdrawal",
+        amount: deposit.amount,
+        balanceAfter,
+        notes: `Reversal of income entry ${entry.id}`,
+        transactionDate: new Date(),
+        createdByEmail: userEmail,
+      },
+    });
   }
 
   const loanPayments = await tx.loanPayment.findMany({
@@ -922,15 +997,28 @@ export async function addAllowedUser(data: {
 }) {
   await requireRole(["super_admin"]);
   const user = await getCurrentUser();
+  const email = data.email.toLowerCase();
 
   const passwordHash = await bcrypt.hash(data.password, 12);
-  await prisma.allowedUser.create({
+
+  await upsertSupabaseAuthUser(email, data.password, {
+    role: data.role,
+    employeeId: null,
+  });
+
+  const allowedUser = await prisma.allowedUser.create({
     data: {
-      email: data.email.toLowerCase(),
+      email,
       role: data.role,
       status: "active",
       passwordHash,
     },
+  });
+
+  await updateSupabaseAuthMetadata(email, {
+    role: data.role,
+    employeeId: allowedUser.employeeId,
+    allowedUserId: allowedUser.id,
   });
 
   await createAuditLog({
@@ -946,6 +1034,10 @@ export async function addAllowedUser(data: {
 
 export async function removeAllowedUser(id: string) {
   await requireRole(["super_admin"]);
+  const allowedUser = await prisma.allowedUser.findUnique({ where: { id } });
+  if (!allowedUser) throw new Error("User not found");
+
+  await deleteSupabaseAuthUser(allowedUser.email);
   await prisma.allowedUser.delete({ where: { id } });
   revalidatePath("/users");
   return { success: true };
@@ -953,7 +1045,19 @@ export async function removeAllowedUser(id: string) {
 
 export async function updateUserRole(id: string, role: UserRole) {
   await requireRole(["super_admin"]);
-  await prisma.allowedUser.update({ where: { id }, data: { role } });
+  const allowedUser = await prisma.allowedUser.update({
+    where: { id },
+    data: { role },
+    include: { employee: true },
+  });
+
+  await updateSupabaseAuthMetadata(allowedUser.email, {
+    role: allowedUser.role as UserRole,
+    employeeId: allowedUser.employeeId,
+    fullName: allowedUser.employee?.fullName ?? null,
+    allowedUserId: allowedUser.id,
+  });
+
   revalidatePath("/users");
   return { success: true };
 }
@@ -994,6 +1098,87 @@ export async function getActiveEmployees() {
       coLeadCommissionWallet: true,
     },
     orderBy: { fullName: "asc" },
+  });
+}
+
+export async function getEmployeeActiveLoans(employeeId: string) {
+  await requireRole(["super_admin", "finance_manager"]);
+  if (!employeeId) return [];
+
+  const loans = await prisma.loan.findMany({
+    where: { employeeId, status: "active" },
+    orderBy: [{ loanDate: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      notes: true,
+      loanAmount: true,
+      loanDate: true,
+      remainingPrincipal: true,
+      accruedInterest: true,
+    },
+  });
+
+  return loans.map((loan) => ({
+    id: loan.id,
+    label: getLoanDisplayName(loan),
+    remainingBalance: round2(loan.remainingPrincipal + loan.accruedInterest),
+    loanDate: loan.loanDate.toISOString(),
+  }));
+}
+
+function isPrincipalCleared(principal: number) {
+  return principal <= PRINCIPAL_TOLERANCE;
+}
+
+function orderLoansForRepayment<T extends { id: string }>(loans: T[], targetLoanId?: string) {
+  if (!targetLoanId || loans.length <= 1) return loans;
+  const selected = loans.find((loan) => loan.id === targetLoanId);
+  if (!selected) return loans;
+  return [selected, ...loans.filter((loan) => loan.id !== targetLoanId)];
+}
+
+async function depositSavingsInTx(
+  tx: FinanceTx,
+  params: {
+    employeeId: string;
+    amount: number;
+    paymentDate: Date;
+    notes: string;
+    userEmail?: string | null;
+  }
+) {
+  if (params.amount <= 0) return;
+
+  let account = await tx.savingsAccount.findUnique({
+    where: { employeeId: params.employeeId },
+  });
+  if (!account) {
+    account = await tx.savingsAccount.create({
+      data: {
+        employeeId: params.employeeId,
+        savingsType: "manual",
+        currentBalance: 0,
+        isActive: true,
+      },
+    });
+  }
+
+  const balanceAfter = round2(account.currentBalance + params.amount);
+  await tx.savingsAccount.update({
+    where: { id: account.id },
+    data: { currentBalance: balanceAfter },
+  });
+  await tx.savingsTransaction.create({
+    data: {
+      savingsAccountId: account.id,
+      employeeId: params.employeeId,
+      transactionType: "deposit",
+      amount: params.amount,
+      balanceAfter,
+      notes: params.notes,
+      transactionDate: params.paymentDate,
+      createdByEmail: params.userEmail,
+    },
   });
 }
 

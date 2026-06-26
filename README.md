@@ -5,8 +5,8 @@ Private company finance platform for payroll, loans, savings, commissions, reven
 ## Tech Stack
 
 - **Next.js 15+** (App Router) · TypeScript · Tailwind CSS · Shadcn UI
-- **Prisma ORM** · PostgreSQL (local + production)
-- **NextAuth.js** · Credentials-based auth with RBAC
+- **Prisma ORM** · Supabase PostgreSQL
+- **Supabase Auth** · Email/password login with RBAC
 - **React Hook Form** · Zod · Recharts
 
 ## Features
@@ -26,13 +26,21 @@ Private company finance platform for payroll, loans, savings, commissions, reven
 
 ## Quick Start
 
+1. Create a project at [supabase.com](https://supabase.com)
+2. Copy `.env.example` to `.env` and fill in your Supabase keys + database URL
+3. Run:
+
 ```bash
 npm install
-cp .env.example .env
-docker compose up -d
 npx prisma db push
 npm run db:seed
 npm run dev
+```
+
+4. Initialize auth (creates admin in Supabase + database):
+
+```
+http://localhost:3000/api/setup?secret=YOUR_SUPABASE_SERVICE_ROLE_KEY
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
@@ -41,38 +49,50 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `POSTGRES_URL` / `POSTGRES_PRISMA_URL` | Auto-used if Vercel Postgres is connected |
-| `AUTH_SECRET` | Random secret for NextAuth sessions |
-| `NEXTAUTH_URL` | App URL (e.g. `https://your-app.vercel.app`) |
-| `DEFAULT_ADMIN_EMAIL` | Optional — defaults to `admin@northnine.pk` |
-| `DEFAULT_ADMIN_PASSWORD` | Optional — defaults to `N9Accounts@123` |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase publishable (or anon) key |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | No | Legacy alias for publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role key (server only) |
+| `DATABASE_URL` | Yes | Supabase PostgreSQL connection string |
+| `DEFAULT_ADMIN_EMAIL` | No | Defaults to `admin@northnine.pk` |
+| `DEFAULT_ADMIN_PASSWORD` | No | Defaults to `N9Accounts@123` |
+| `SETUP_SECRET` | No | Secret for `/api/setup` (defaults to service role key) |
+
+Get keys from **Supabase → Project Settings → API**  
+Get database URL from **Supabase → Project Settings → Database → Connection string**
 
 ## Vercel Deployment
 
-1. Create a **Postgres** database (Vercel Postgres, Neon, or Supabase).
-2. Set these environment variables in Vercel → Project → Settings → Environment Variables:
-   - `DATABASE_URL` — Postgres connection string (`postgresql://...`)
-   - `AUTH_SECRET` — run `openssl rand -base64 32`
-   - `NEXTAUTH_URL` — your production URL (e.g. `https://your-app.vercel.app`)
-3. Redeploy. The build only runs `prisma generate` and `next build` (no database access during build).
-4. After the first successful deploy, initialize the database once:
-   `https://your-app.vercel.app/api/setup?secret=YOUR_AUTH_SECRET`
-5. Sign in with `admin@northnine.pk` / `N9Accounts@123`
+1. Connect your GitHub repo to Vercel.
+2. Create a Supabase project (or use an existing one).
+3. In **Vercel → Project → Settings → Environment Variables**, add:
 
-For local database setup after deploy, run `npm run db:push && npm run db:seed`.
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true
+```
+
+4. Deploy. The build runs `prisma generate` + `next build` (no DB access during build).
+5. After the first deploy, run setup once:
+
+```
+https://your-app.vercel.app/api/setup?secret=YOUR_SUPABASE_SERVICE_ROLE_KEY
+```
+
+6. Sign in with `admin@northnine.pk` / `N9Accounts@123`
 
 ## Security
 
 | Layer | Implementation |
 |-------|----------------|
-| Auth | NextAuth credentials, bcrypt password hashing |
+| Auth | Supabase Auth (email/password) |
 | Authorization | `allowed_users` table + role checks |
 | Routes | Next.js middleware + server-side role guards |
 | Audit | `audit_logs` on all financial changes |
-| 2FA | Architecture ready on `allowed_users` |
 
 ## Roles
 
@@ -82,18 +102,10 @@ For local database setup after deploy, run `npm run db:push && npm run db:seed`.
 | **Finance Manager** | All financial modules, reports, audit logs |
 | **Employee** | Own payroll, savings, loans, commissions only |
 
-## Production (PostgreSQL)
+## Production Database (Supabase)
 
-Update `prisma/schema.prisma`:
-
-```prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-```
-
-Then run `npm run db:migrate`.
+Prisma connects to your Supabase PostgreSQL database via `DATABASE_URL`.  
+Use the **Transaction pooler** connection string (port 6543) for Vercel/serverless.
 
 ## Loan Interest — Daily Diminishing Balance
 
@@ -109,3 +121,4 @@ Use **Loans → Loan Calculator** for interactive amortization schedules.
 ---
 
 **N9Accounts** — Authorized personnel only. All access is monitored and logged.
+

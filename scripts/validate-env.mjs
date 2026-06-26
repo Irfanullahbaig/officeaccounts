@@ -37,9 +37,9 @@ function loadDotEnv() {
 
 loadDotEnv();
 
-// Vercel Postgres / Neon integrations often expose POSTGRES_* instead of DATABASE_URL
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL =
+    process.env.SUPABASE_DB_URL ??
     process.env.POSTGRES_PRISMA_URL ??
     process.env.POSTGRES_URL ??
     process.env.DATABASE_URL_UNPOOLED ??
@@ -58,24 +58,48 @@ export function ensureDatabaseUrlForGenerate() {
     "\n⚠️  DATABASE_URL is not set. Using a placeholder for prisma generate only."
   );
   console.warn(
-    "    Set DATABASE_URL in Vercel → Settings → Environment Variables (PostgreSQL).\n"
+    "    Set DATABASE_URL to your Supabase connection string in Vercel → Environment Variables.\n"
   );
   return process.env.DATABASE_URL;
 }
 
+const SUPABASE_VARS = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+];
+
+function getSupabaseSecretKey() {
+  return process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+}
+
+function getSupabasePublicKey() {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
+
 if (isBuild) {
   const databaseUrl = process.env.DATABASE_URL;
+  const missingSupabase = SUPABASE_VARS.filter((key) => !process.env[key]);
+  if (!getSupabasePublicKey()) {
+    missingSupabase.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+  }
+  if (!getSupabaseSecretKey()) {
+    missingSupabase.push("SUPABASE_SECRET_KEY");
+  }
+
+  if (missingSupabase.length > 0 && isVercel) {
+    console.warn(
+      `\n⚠️  Vercel build: missing Supabase auth variables: ${missingSupabase.join(", ")}`
+    );
+    console.warn("    Login requires Supabase Auth keys at runtime.\n");
+  }
 
   if (!databaseUrl) {
     if (isVercel) {
+      console.warn("\n⚠️  Vercel build: DATABASE_URL is not configured yet.");
       console.warn(
-        "\n⚠️  Vercel build: DATABASE_URL is not configured yet."
-      );
-      console.warn(
-        "    Build will continue for client generation, but the app needs DATABASE_URL at runtime."
-      );
-      console.warn(
-        "    Add a PostgreSQL URL from Vercel Postgres, Neon, or Supabase.\n"
+        "    Add your Supabase database URL from Project Settings → Database.\n"
       );
     } else {
       console.warn(
@@ -84,7 +108,7 @@ if (isBuild) {
     }
   } else if (!isPostgresUrl(databaseUrl)) {
     const message =
-      "DATABASE_URL must be a PostgreSQL connection string (postgres:// or postgresql://).";
+      "DATABASE_URL must be a Supabase PostgreSQL connection string (postgres:// or postgresql://).";
 
     if (isVercel) {
       console.error(`\n❌ ${message}`);

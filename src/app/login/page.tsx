@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,6 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
+import { createClient } from "@/lib/supabase/client";
+import { completeLoginAfterAuth } from "@/lib/auth/login";
+import { OAuthSignIn } from "@/components/auth/oauth-sign-in";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid company email"),
@@ -20,6 +22,9 @@ const loginSchema = z.object({
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
+
+const CONFIG_ERROR =
+  "Server configuration error. Ensure NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, DATABASE_URL, and SUPABASE_SERVICE_ROLE_KEY are set.";
 
 export default function LoginPage() {
   return (
@@ -35,46 +40,58 @@ function LoginPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const authError = searchParams.get("error");
-    if (authError === "Configuration") {
-      setError(
-        "Server configuration error. Ensure AUTH_SECRET, DATABASE_URL, and NEXTAUTH_URL are set on Vercel."
-      );
-    } else if (authError === "CredentialsSignin") {
-      setError(ACCESS_DENIED_MESSAGE);
-    }
-  }, [searchParams]);
-
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
 
+  useEffect(() => {
+    const authError = searchParams.get("error");
+    if (authError === "auth_callback_failed") {
+      setError("Sign in failed. Please try again.");
+    } else if (authError === "access_denied") {
+      setError(ACCESS_DENIED_MESSAGE);
+    }
+  }, [searchParams]);
+
   async function onSubmit(data: LoginForm) {
     setLoading(true);
     setError(null);
 
-    const result = await signIn("credentials", {
-      email: data.email.toLowerCase(),
-      password: data.password,
-      redirect: false,
-    });
+    try {
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: data.email.toLowerCase(),
+        password: data.password,
+      });
 
-    if (result?.error) {
-      setError(
-        result.error === "Configuration"
-          ? "Server configuration error. Ensure AUTH_SECRET, DATABASE_URL, and NEXTAUTH_URL are set on Vercel."
-          : result.error === "CredentialsSignin"
+      if (signInError) {
+        setError(
+          signInError.message.includes("Invalid login credentials")
             ? "Invalid email or password. Use admin@northnine.pk with your admin password."
-            : "Sign in failed. Please try again."
-      );
+            : signInError.message
+        );
+        setLoading(false);
+        return;
+      }
+
+      const result = await completeLoginAfterAuth();
+      if (!result.ok) {
+        setError(result.error === ACCESS_DENIED_MESSAGE ? ACCESS_DENIED_MESSAGE : result.error);
+        setLoading(false);
+        return;
+      }
+
+      const dest = result.role === "employee" ? "/my" : "/dashboard";
+      router.push(dest);
+      router.refresh();
+    } catch {
+      setError(CONFIG_ERROR);
       setLoading(false);
       return;
     }
 
-    router.push("/dashboard");
-    router.refresh();
+    setLoading(false);
   }
 
   return (
@@ -132,9 +149,16 @@ function LoginPageContent() {
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Sign In
               </Button>
+              <OAuthSignIn portal="staff" />
             </form>
             <p className="text-xs text-muted-foreground text-center mt-6">
               No public registration. Contact your Super Admin for access.
+            </p>
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Board director?{" "}
+              <a href="/director/login" className="underline hover:text-foreground">
+                Sign in to the Director Portal
+              </a>
             </p>
           </CardContent>
         </Card>

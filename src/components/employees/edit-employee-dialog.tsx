@@ -38,6 +38,11 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+function employeeRoleForForm(role: UserRole): FormData["role"] {
+  if (role === "director") return "employee";
+  return role;
+}
+
 export function EditEmployeeDialog({ employee }: { employee: Employee }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -55,7 +60,7 @@ export function EditEmployeeDialog({ employee }: { employee: Employee }) {
       designation: employee.designation ?? "",
       joining_date: employee.joining_date.split("T")[0],
       status: employee.status as FormData["status"],
-      role: employee.role,
+      role: employeeRoleForForm(employee.role),
     },
   });
 
@@ -70,7 +75,7 @@ export function EditEmployeeDialog({ employee }: { employee: Employee }) {
       designation: employee.designation ?? "",
       joining_date: employee.joining_date.split("T")[0],
       status: employee.status as FormData["status"],
-      role: employee.role,
+      role: employeeRoleForForm(employee.role),
     });
   }, [open, employee, form]);
 
@@ -155,7 +160,7 @@ export function EditEmployeeDialog({ employee }: { employee: Employee }) {
             </div>
             <div className="space-y-2 col-span-2">
               <Label>Role</Label>
-              <Select value={form.watch("role")} onValueChange={(v) => v && form.setValue("role", v as UserRole)}>
+              <Select value={form.watch("role")} onValueChange={(v) => v && form.setValue("role", v as FormData["role"])}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(Object.keys(ROLE_LABELS) as UserRole[]).map((role) => (

@@ -15,7 +15,13 @@ import { formatCurrency, cnStatusColor } from "@/lib/utils/format";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
 import { EditEmployeeDialog } from "@/components/employees/edit-employee-dialog";
 
-export function EmployeesTable({ employees }: { employees: Employee[] }) {
+export function EmployeesTable({
+  employees,
+  readOnly = false,
+}: {
+  employees: Employee[];
+  readOnly?: boolean;
+}) {
   return (
     <div className="rounded-lg border">
       <Table>
@@ -33,7 +39,7 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
             <TableHead>Net Available</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="w-[60px]">Actions</TableHead>
+            {!readOnly && <TableHead className="w-[60px]">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -59,9 +65,11 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
                   {emp.status}
                 </Badge>
               </TableCell>
-              <TableCell>
-                <EditEmployeeDialog employee={emp} />
-              </TableCell>
+              {!readOnly && (
+                <TableCell>
+                  <EditEmployeeDialog employee={emp} />
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

@@ -1,4 +1,4 @@
-export type UserRole = "super_admin" | "admin" | "finance_manager" | "employee" | "viewer";
+export type UserRole = "super_admin" | "admin" | "finance_manager" | "employee" | "viewer" | "director";
 export type UserStatus = "active" | "inactive" | "suspended";
 export type PayrollStatus = "pending" | "paid" | "cancelled";
 export type InterestType = "daily_diminishing" | "monthly_diminishing" | "flat";

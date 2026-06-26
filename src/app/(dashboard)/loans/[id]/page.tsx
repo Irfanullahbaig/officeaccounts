@@ -128,10 +128,32 @@ export default async function LoanDetailPage({
           icon={Wallet}
           description="Interest collected on this loan"
         />
-        <StatCard title="Accrued Interest" value={formatCurrency(summary.accruedInterest)} icon={Percent} description="Unpaid interest to date" />
-        <StatCard title="Total Paid" value={formatCurrency(summary.totalPaid)} icon={Wallet} />
-        {isActive && (
-          <StatCard title="Payoff Amount" value={formatCurrency(summary.payoffAmount)} icon={CheckCircle} description="Principal + accrued interest" />
+        {isActive ? (
+          <>
+            <StatCard
+              title="Accrued Interest"
+              value={formatCurrency(summary.accruedInterest)}
+              icon={Percent}
+              description="Unpaid interest on remaining principal"
+            />
+            <StatCard title="Total Paid" value={formatCurrency(summary.totalPaid)} icon={Wallet} />
+            <StatCard
+              title="Payoff Amount"
+              value={formatCurrency(summary.payoffAmount)}
+              icon={CheckCircle}
+              description="Principal + accrued interest"
+            />
+          </>
+        ) : (
+          <>
+            <StatCard title="Total Paid" value={formatCurrency(summary.totalPaid)} icon={Wallet} />
+            <StatCard
+              title="Accrued Interest"
+              value={formatCurrency(0)}
+              icon={Percent}
+              description="Loan settled — no unpaid interest"
+            />
+          </>
         )}
         {loan.closedAt && (
           <StatCard title="Closed Date" value={formatDate(loan.closedAt.toISOString())} icon={CheckCircle} />
@@ -156,7 +178,9 @@ export default async function LoanDetailPage({
       <Card>
         <CardHeader>
           <CardTitle>Loan Ledger</CardTitle>
-          <CardDescription>Complete transaction history — payments, interest accruals, and adjustments</CardDescription>
+          <CardDescription>
+            Complete transaction history — oldest to newest. Use advanced filters to narrow payments, interest, and date ranges.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <LoanLedgerTable entries={loan.ledgerEntries} isAdmin={true} />

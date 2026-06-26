@@ -72,19 +72,126 @@ async function accrueToDate(
   return getLoanOrThrow(loanId);
 }
 
+const PRINCIPAL_TOLERANCE = 0.01;
+
+function isPrincipalCleared(principal: number) {
+  return principal <= PRINCIPAL_TOLERANCE;
+}
+
+/** When principal is fully repaid, clear any leftover accrued interest and close the loan. */
+async function finalizeLoanWhenPrincipalCleared(
+  loanId: string,
+  userEmail?: string | null,
+  asOfDate: Date = new Date(),
+  waivedInterestOverride?: number
+) {
+  const loan = await getLoanOrThrow(loanId);
+  if (loan.status !== "active" && loan.status !== "paid") return loan;
+  if (!isPrincipalCleared(loan.remainingPrincipal)) return loan;
+
+  const waivedInterest = round2(
+    waivedInterestOverride !== undefined ? waivedInterestOverride : loan.accruedInterest
+  );
+  if (waivedInterest <= PRINCIPAL_TOLERANCE && loan.status === "paid") {
+    return loan;
+  }
+  const settlementDate = startOfDayUTC(asOfDate);
+  const ledgerWrites = [];
+
+  if (waivedInterest > PRINCIPAL_TOLERANCE) {
+    ledgerWrites.push(
+      prisma.loanLedgerEntry.create({
+        data: {
+          loanId,
+          transactionDate: settlementDate,
+          transactionType: "adjustment",
+          amount: 0,
+          interestPortion: 0,
+          principalPortion: 0,
+          remainingPrincipal: 0,
+          accruedInterestAfter: 0,
+          remarks: `Accrued interest cleared — principal fully repaid (Rs ${waivedInterest.toLocaleString()} waived)`,
+          createdByEmail: userEmail,
+        },
+      })
+    );
+  }
+
+  ledgerWrites.push(
+    prisma.loanLedgerEntry.create({
+      data: {
+        loanId,
+        transactionDate: settlementDate,
+        transactionType: "loan_closed",
+        amount: 0,
+        remainingPrincipal: 0,
+        accruedInterestAfter: 0,
+        remarks:
+          waivedInterest > PRINCIPAL_TOLERANCE
+            ? "Loan closed — principal settled, remaining accrued interest waived"
+            : "Loan fully settled",
+        createdByEmail: userEmail,
+      },
+    })
+  );
+
+  await prisma.$transaction([
+    prisma.loan.update({
+      where: { id: loanId },
+      data: {
+        remainingPrincipal: 0,
+        accruedInterest: 0,
+        status: "paid",
+        closedAt: loan.closedAt ?? settlementDate,
+      },
+    }),
+    ...ledgerWrites,
+  ]);
+
+  const outstandingLoans = await prisma.loan.aggregate({
+    where: { employeeId: loan.employeeId, status: "active" },
+    _sum: { remainingPrincipal: true, accruedInterest: true },
+  });
+  await prisma.employee.update({
+    where: { id: loan.employeeId },
+    data: {
+      currentLoanBalance: round2(
+        (outstandingLoans._sum.remainingPrincipal ?? 0) +
+          (outstandingLoans._sum.accruedInterest ?? 0)
+      ),
+    },
+  });
+
+  return getLoanOrThrow(loanId);
+}
+
 export async function getLoanDetail(loanId: string) {
-  await requireRole(["super_admin", "admin", "finance_manager"]);
-  const loan = await prisma.loan.findUnique({
+  await requireRole(["super_admin", "admin", "finance_manager", "director"]);
+
+  let loan = await prisma.loan.findUnique({
     where: { id: loanId },
     include: {
       employee: true,
-      ledgerEntries: { orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] },
+      ledgerEntries: { orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] },
     },
   });
   if (!loan) throw new Error("Loan not found");
 
-  let displayAccrued = loan.accruedInterest;
-  if (loan.status === "active") {
+  if (loan.status === "active" && isPrincipalCleared(loan.remainingPrincipal)) {
+    await finalizeLoanWhenPrincipalCleared(loanId);
+    loan = await prisma.loan.findUnique({
+      where: { id: loanId },
+      include: {
+        employee: true,
+        ledgerEntries: { orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] },
+      },
+    });
+    if (!loan) throw new Error("Loan not found");
+  }
+
+  let displayAccrued = 0;
+  if (loan.status === "active" && !isPrincipalCleared(loan.remainingPrincipal)) {
+    displayAccrued = loan.accruedInterest;
     const lastAccrual = loan.lastAccrualDate ?? initialAccrualDate(loan.loanDate);
     const { accruedAmount } = accrueInterestForPeriod({
       principal: loan.remainingPrincipal,
@@ -104,7 +211,9 @@ export async function getLoanDetail(loanId: string) {
       outstandingPrincipal: loan.remainingPrincipal,
       accruedInterest: displayAccrued,
       totalPaid,
-      payoffAmount: loan.remainingPrincipal + displayAccrued,
+      payoffAmount: isPrincipalCleared(loan.remainingPrincipal)
+        ? 0
+        : round2(loan.remainingPrincipal + displayAccrued),
       status: loan.status,
       closedAt: loan.closedAt,
     },
@@ -158,18 +267,20 @@ export async function recordLoanPayment(data: {
 
   const newPrincipal = allocation.newPrincipal;
   const newAccrued = allocation.newAccruedInterest;
-  const isFullyPaid = newPrincipal <= 0.01 && newAccrued <= 0.01;
+  const principalSettled = isPrincipalCleared(newPrincipal);
+  const waivedOnSettlement =
+    principalSettled && newAccrued > PRINCIPAL_TOLERANCE ? round2(newAccrued) : 0;
 
   await prisma.$transaction([
     prisma.loan.update({
       where: { id: data.loanId },
       data: {
-        remainingPrincipal: isFullyPaid ? 0 : newPrincipal,
-        accruedInterest: isFullyPaid ? 0 : newAccrued,
+        remainingPrincipal: principalSettled ? 0 : newPrincipal,
+        accruedInterest: principalSettled ? 0 : newAccrued,
         totalInterestPaid: { increment: allocation.interestPaid },
         totalPrincipalPaid: { increment: allocation.principalPaid },
-        status: isFullyPaid ? "paid" : "active",
-        closedAt: isFullyPaid ? new Date() : null,
+        status: principalSettled ? "paid" : "active",
+        closedAt: principalSettled ? paymentDate : null,
       },
     }),
     prisma.loanLedgerEntry.create({
@@ -180,8 +291,8 @@ export async function recordLoanPayment(data: {
         amount: data.amount,
         interestPortion: allocation.interestPaid,
         principalPortion: allocation.principalPaid,
-        remainingPrincipal: isFullyPaid ? 0 : newPrincipal,
-        accruedInterestAfter: isFullyPaid ? 0 : newAccrued,
+        remainingPrincipal: principalSettled ? 0 : newPrincipal,
+        accruedInterestAfter: principalSettled ? 0 : newAccrued,
         remarks:
           data.remarks ??
           (data.paymentSource === "bank_transfer"
@@ -192,7 +303,7 @@ export async function recordLoanPayment(data: {
         createdByEmail: user?.email,
       },
     }),
-    ...(isFullyPaid
+    ...(principalSettled && waivedOnSettlement <= PRINCIPAL_TOLERANCE
       ? [
           prisma.loanLedgerEntry.create({
             data: {
@@ -215,8 +326,8 @@ export async function recordLoanPayment(data: {
         amountPaid: data.amount,
         principalPaid: allocation.principalPaid,
         interestPaid: allocation.interestPaid,
-        remainingPrincipal: isFullyPaid ? 0 : newPrincipal,
-        remainingInterest: isFullyPaid ? 0 : newAccrued,
+        remainingPrincipal: principalSettled ? 0 : newPrincipal,
+        remainingInterest: principalSettled ? 0 : newAccrued,
         paymentSource: data.paymentSource ?? (data.payrollId ? "payroll_deduction" : "manual"),
         payrollId: data.payrollId ?? null,
         notes: data.remarks,
@@ -224,6 +335,31 @@ export async function recordLoanPayment(data: {
       },
     }),
   ]);
+
+  if (principalSettled) {
+    if (waivedOnSettlement > PRINCIPAL_TOLERANCE) {
+      await finalizeLoanWhenPrincipalCleared(
+        data.loanId,
+        user?.email,
+        paymentDate,
+        waivedOnSettlement
+      );
+    } else {
+      const outstandingLoans = await prisma.loan.aggregate({
+        where: { employeeId: loan.employeeId, status: "active" },
+        _sum: { remainingPrincipal: true, accruedInterest: true },
+      });
+      await prisma.employee.update({
+        where: { id: loan.employeeId },
+        data: {
+          currentLoanBalance: round2(
+            (outstandingLoans._sum.remainingPrincipal ?? 0) +
+              (outstandingLoans._sum.accruedInterest ?? 0)
+          ),
+        },
+      });
+    }
+  }
 
   await createAuditLog({
     userEmail: user?.email,
@@ -234,13 +370,14 @@ export async function recordLoanPayment(data: {
       amount: data.amount,
       interestPaid: allocation.interestPaid,
       principalPaid: allocation.principalPaid,
-      remainingPrincipal: newPrincipal,
+      remainingPrincipal: principalSettled ? 0 : newPrincipal,
+      waivedInterest: waivedOnSettlement,
     },
   });
 
   revalidatePath(`/loans/${data.loanId}`);
   revalidatePath("/loans");
-  return { success: true, closed: isFullyPaid };
+  return { success: true, closed: principalSettled };
 }
 
 export async function closeLoanPayoff(loanId: string, remarks?: string) {

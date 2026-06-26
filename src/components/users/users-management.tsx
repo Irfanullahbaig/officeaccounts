@@ -23,7 +23,7 @@ import { cnStatusColor } from "@/lib/utils/format";
 
 const schema = z.object({
   email: z.string().email(),
-  role: z.enum(["super_admin", "admin", "finance_manager", "employee", "viewer"]),
+  role: z.enum(["super_admin", "admin", "finance_manager", "employee", "viewer", "director"]),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
@@ -93,6 +93,7 @@ export function UsersManagement({ users }: { users: AllowedUser[] }) {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="director">Director (View Only)</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                   <SelectItem value="finance_manager">Finance Manager</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -124,7 +125,7 @@ export function UsersManagement({ users }: { users: AllowedUser[] }) {
                   <Select value={user.role} onValueChange={(v) => v && handleRoleChange(user.id, v as UserRole)}>
                     <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {(["employee", "viewer", "finance_manager", "admin", "super_admin"] as UserRole[]).map((r) => (
+                      {(["employee", "viewer", "director", "finance_manager", "admin", "super_admin"] as UserRole[]).map((r) => (
                         <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
                       ))}
                     </SelectContent>

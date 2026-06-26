@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createIncomeEntry, getActiveEmployees } from "@/lib/actions/finance";
 import { toast } from "sonner";
+import { IncomeLoanPaymentFields } from "@/components/revenue/income-loan-payment-fields";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -31,6 +32,7 @@ const schema = z.object({
   currency: z.enum(["PKR", "USD", "EUR", "GBP", "AED"]),
   savings_contribution: z.number().min(0),
   loan_payment: z.number().min(0),
+  target_loan_id: z.string().optional(),
   lead_employee_id: z.string().optional(),
   lead_percent: z.number().min(0),
   co_lead_employee_id: z.string().optional(),
@@ -52,6 +54,7 @@ export function AddRevenueDialog() {
       currency: "PKR",
       savings_contribution: 0,
       loan_payment: 0,
+      target_loan_id: undefined,
       lead_percent: 0,
       co_lead_percent: 0,
     },
@@ -64,6 +67,8 @@ export function AddRevenueDialog() {
       .catch(() => toast.error("Failed to load employee list"));
   }, [open]);
 
+  const employeeId = form.watch("employee_id");
+  const targetLoanId = form.watch("target_loan_id");
   const projectValue = form.watch("project_value") || 0;
   const savings = form.watch("savings_contribution") || 0;
   const loanPayment = form.watch("loan_payment") || 0;
@@ -92,6 +97,7 @@ export function AddRevenueDialog() {
         currency: data.currency,
         savings_contribution: data.savings_contribution,
         loan_payment: data.loan_payment,
+        target_loan_id: data.target_loan_id,
         notes: data.notes,
         lead_assignments: data.lead_employee_id && data.lead_percent > 0 ? [{ employee_id: data.lead_employee_id, percent: data.lead_percent }] : [],
         co_lead_assignments: data.co_lead_employee_id && data.co_lead_percent > 0 ? [{ employee_id: data.co_lead_employee_id, percent: data.co_lead_percent }] : [],
@@ -143,9 +149,14 @@ export function AddRevenueDialog() {
               </Select>
             </div>
             <div className="space-y-2"><Label>Savings Contribution</Label><Input type="number" {...form.register("savings_contribution", { valueAsNumber: true })} /></div>
-            <div className="space-y-2"><Label>Loan Payment</Label><Input type="number" {...form.register("loan_payment", { valueAsNumber: true })} />
-              <p className="text-xs text-muted-foreground">Principal is reduced first; daily interest accrues on remaining balance.</p>
-            </div>
+            <IncomeLoanPaymentFields
+              employeeId={employeeId}
+              loanPayment={loanPayment}
+              targetLoanId={targetLoanId}
+              register={form.register}
+              setValue={form.setValue}
+              watch={form.watch}
+            />
             <div className="space-y-2">
               <Label>Lead Assigned</Label>
               <Select
@@ -192,7 +203,13 @@ export function AddRevenueDialog() {
   );
 }
 
-export function RevenueTable({ revenues }: { revenues: IncomeEntry[] }) {
+export function RevenueTable({
+  revenues,
+  readOnly = false,
+}: {
+  revenues: IncomeEntry[];
+  readOnly?: boolean;
+}) {
   return (
     <div className="rounded-lg border">
       <Table>
@@ -208,7 +225,7 @@ export function RevenueTable({ revenues }: { revenues: IncomeEntry[] }) {
             <TableHead>Loan Payment</TableHead>
             <TableHead>Net Payout</TableHead>
             <TableHead>Date</TableHead>
-            <TableHead className="w-[60px]">Actions</TableHead>
+            {!readOnly && <TableHead className="w-[60px]">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -224,9 +241,11 @@ export function RevenueTable({ revenues }: { revenues: IncomeEntry[] }) {
               <TableCell>{formatCurrency(Number(r.loan_payment))}</TableCell>
               <TableCell className="font-semibold">{formatCurrency(Number(r.net_payout))}</TableCell>
               <TableCell>{formatDate(r.payment_received_date)}</TableCell>
-              <TableCell>
-                <EditIncomeDialog income={r} />
-              </TableCell>
+              {!readOnly && (
+                <TableCell>
+                  <EditIncomeDialog income={r} />
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

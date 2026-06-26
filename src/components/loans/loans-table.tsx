@@ -22,7 +22,22 @@ const INTEREST_LABELS: Record<string, string> = {
   flat: "Flat Interest",
 };
 
-export function LoansTable({ loans }: { loans: LoanWithEmployee[] }) {
+const STATUS_LABELS: Record<string, string> = {
+  active: "Active",
+  paid: "Completed",
+  defaulted: "Defaulted",
+  cancelled: "Cancelled",
+};
+
+export function LoansTable({
+  loans,
+  readOnly = false,
+  detailBasePath = "/loans",
+}: {
+  loans: LoanWithEmployee[];
+  readOnly?: boolean;
+  detailBasePath?: string;
+}) {
   return (
     <div className="rounded-lg border">
       <Table>
@@ -38,14 +53,14 @@ export function LoansTable({ loans }: { loans: LoanWithEmployee[] }) {
             <TableHead>Total Interest Earned</TableHead>
             <TableHead>Date</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="w-[160px]">Actions</TableHead>
+            {!readOnly && <TableHead className="w-[160px]">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {loans.map((loan) => (
             <TableRow key={loan.id}>
               <TableCell>
-                <Link href={`/loans/${loan.id}`} className="hover:underline">
+                <Link href={`${detailBasePath}/${loan.id}`} className="hover:underline">
                   <p className="font-medium">{loan.employees?.full_name}</p>
                   <p className="text-xs text-muted-foreground">{loan.employees?.employee_code}</p>
                 </Link>
@@ -68,9 +83,10 @@ export function LoansTable({ loans }: { loans: LoanWithEmployee[] }) {
               <TableCell>{formatDate(loan.loan_date)}</TableCell>
               <TableCell>
                 <Badge variant="secondary" className={cnStatusColor(loan.status)}>
-                  {loan.status}
+                  {STATUS_LABELS[loan.status] ?? loan.status}
                 </Badge>
               </TableCell>
+              {!readOnly && (
               <TableCell>
                 <div className="flex items-center gap-1">
                   {loan.status === "active" && (
@@ -102,6 +118,7 @@ export function LoansTable({ loans }: { loans: LoanWithEmployee[] }) {
                   />
                 </div>
               </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

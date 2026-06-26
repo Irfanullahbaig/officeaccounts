@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import type { UserRole } from "@/types/database";
 import {
   ensureDefaultAdminOnClient,
   getDefaultAdminCredentials,
@@ -8,21 +7,6 @@ import {
 } from "@/lib/auth/admin-credentials";
 
 export { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD, getDefaultAdminCredentials };
-
-export function matchesDefaultAdmin(email: string, password: string) {
-  const admin = getDefaultAdminCredentials();
-  return email === admin.email && password === admin.password;
-}
-
-export function buildDefaultAdminUser(email: string) {
-  return {
-    id: "default-admin",
-    email,
-    role: "super_admin" as UserRole,
-    employeeId: null,
-    fullName: "Administrator",
-  };
-}
 
 export async function ensureDefaultAdmin() {
   await ensureDefaultAdminOnClient(prisma);

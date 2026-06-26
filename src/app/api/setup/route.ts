@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { execSync } from "node:child_process";
 import { ensureDefaultAdmin } from "@/lib/auth/bootstrap-admin";
-import { getAuthSecret } from "@/lib/env";
+import { getSetupSecret } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -10,15 +10,15 @@ export async function GET(request: Request) {
   const secret = searchParams.get("secret");
 
   try {
-    const expectedSecret = process.env.SETUP_SECRET ?? getAuthSecret();
+    const expectedSecret = getSetupSecret();
 
-    if (!secret || secret !== expectedSecret) {
+    if (!expectedSecret || !secret || secret !== expectedSecret) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (!process.env.DATABASE_URL) {
+    if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
       return NextResponse.json(
-        { error: "DATABASE_URL is not configured on Vercel" },
+        { error: "DATABASE_URL is not configured" },
         { status: 500 }
       );
     }
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: "Database initialized and default admin ensured",
+      message: "Database initialized and default admin synced to Supabase Auth",
       adminEmail: "admin@northnine.pk",
     });
   } catch (error) {
