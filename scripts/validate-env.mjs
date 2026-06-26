@@ -1,5 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { loadEnvFiles } from "./load-env.mjs";
 
 /** Placeholder used only for `prisma generate` when DATABASE_URL is not set at build time. */
 export const PRISMA_GENERATE_PLACEHOLDER_URL =
@@ -8,34 +7,7 @@ export const PRISMA_GENERATE_PLACEHOLDER_URL =
 const isBuild = process.argv.includes("--build");
 const isVercel = Boolean(process.env.VERCEL);
 
-function loadDotEnv() {
-  const envPath = resolve(process.cwd(), ".env");
-  if (!existsSync(envPath)) return;
-
-  const content = readFileSync(envPath, "utf8");
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const separator = trimmed.indexOf("=");
-    if (separator === -1) continue;
-
-    const key = trimmed.slice(0, separator).trim();
-    let value = trimmed.slice(separator + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-
-    if (!process.env[key]) {
-      process.env[key] = value;
-    }
-  }
-}
-
-loadDotEnv();
+loadEnvFiles();
 
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL =
@@ -73,6 +45,7 @@ function getSupabaseSecretKey() {
 
 function getSupabasePublicKey() {
   return (
+    process.env.SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
@@ -103,7 +76,7 @@ if (isBuild) {
       );
     } else {
       console.warn(
-        "\n⚠️  Local build: DATABASE_URL is not set. Copy .env.example to .env.\n"
+        "\n⚠️  Local build: DATABASE_URL is not set. Copy .env.example to .env.local.\n"
       );
     }
   } else if (!isPostgresUrl(databaseUrl)) {

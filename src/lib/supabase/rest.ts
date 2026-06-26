@@ -13,11 +13,17 @@ export function getSupabaseRestHeaders(server = false) {
     ? (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "")
     : getSupabaseAnonKey();
 
-  return {
+  const headers: Record<string, string> = {
     apikey: key,
-    Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
   };
+
+  // Legacy JWT keys use Bearer; new sb_* keys must not (Supabase returns "Unregistered API key").
+  if (key.startsWith("eyJ")) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+
+  return headers;
 }
 
 /** Default public table exposed in Supabase (optional REST access). */

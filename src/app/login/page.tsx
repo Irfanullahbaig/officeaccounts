@@ -15,6 +15,7 @@ import { ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/client";
 import { completeLoginAfterAuth } from "@/lib/auth/login";
 import { OAuthSignIn } from "@/components/auth/oauth-sign-in";
+import { formatUnregisteredKeyHelp } from "@/lib/supabase/validate-keys";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid company email"),
@@ -66,10 +67,13 @@ function LoginPageContent() {
       });
 
       if (signInError) {
+        const msg = signInError.message;
         setError(
-          signInError.message.includes("Invalid login credentials")
-            ? "Invalid email or password. Use admin@northnine.pk with your admin password."
-            : signInError.message
+          msg.includes("Unregistered API key")
+            ? formatUnregisteredKeyHelp()
+            : msg.includes("Invalid login credentials")
+              ? "Invalid email or password. Use admin@northnine.pk with your admin password."
+              : msg
         );
         setLoading(false);
         return;
