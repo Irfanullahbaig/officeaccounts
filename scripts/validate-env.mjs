@@ -18,6 +18,21 @@ if (!process.env.DATABASE_URL) {
     "";
 }
 
+function hasSupabaseAuthEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.SUPABASE_PUBLISHABLE_KEY;
+  return Boolean(url && key);
+}
+
+function hasSupabaseServiceRole() {
+  return Boolean(
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY
+  );
+}
+
 export function isPostgresUrl(url) {
   return url.startsWith("postgres://") || url.startsWith("postgresql://");
 }
@@ -35,9 +50,18 @@ export function ensureDatabaseUrlForGenerate() {
 if (isBuild) {
   const databaseUrl = process.env.DATABASE_URL;
 
+  if (hasSupabaseAuthEnv()) {
+    console.log("✓ Supabase Auth env detected");
+    if (!hasSupabaseServiceRole()) {
+      console.warn("⚠️  SUPABASE_SERVICE_ROLE_KEY missing — user sync & /api/setup will fail");
+    }
+  }
+
   if (!databaseUrl) {
     console.log("✓ Static auth mode — DATABASE_URL not required");
   } else if (isVercel && isPostgresUrl(databaseUrl)) {
-    console.log("✓ DATABASE_URL validated for Vercel build");
+    console.log("✓ Supabase/Postgres DATABASE_URL validated for Vercel build");
+  } else if (isPostgresUrl(databaseUrl)) {
+    console.log("✓ Postgres DATABASE_URL detected");
   }
 }

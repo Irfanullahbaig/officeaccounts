@@ -11,6 +11,8 @@ export function getDatabaseUrl(): string {
 export function getSetupSecret(): string {
   return (
     process.env.SETUP_SECRET ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_SECRET_KEY ??
     process.env.SESSION_SECRET ??
     process.env.AUTH_SECRET ??
     ""

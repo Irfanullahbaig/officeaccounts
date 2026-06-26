@@ -5,6 +5,11 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireRole, createAuditLog, getCurrentUser } from "@/lib/auth/session";
 import {
+  deleteSupabaseAuthUser,
+  updateSupabaseAuthMetadata,
+  upsertSupabaseAuthUser,
+} from "@/lib/auth/supabase-users";
+import {
   assertDatabaseConfigured,
   formatDatabaseError,
 } from "@/lib/db/query";
@@ -1030,6 +1035,17 @@ export async function addAllowedUser(data: {
     },
   });
 
+  try {
+    await upsertSupabaseAuthUser({
+      email,
+      password: data.password,
+      role: data.role,
+    });
+  } catch (error) {
+    await prisma.allowedUser.delete({ where: { id: allowedUser.id } });
+    throw error;
+  }
+
   await createAuditLog({
     userEmail: user?.email,
     action: "CREATE",
@@ -1047,6 +1063,11 @@ export async function removeAllowedUser(id: string) {
   if (!allowedUser) throw new Error("User not found");
 
   await prisma.allowedUser.delete({ where: { id } });
+  try {
+    await deleteSupabaseAuthUser(allowedUser.email);
+  } catch (error) {
+    console.error("Failed to delete Supabase auth user:", error);
+  }
   revalidatePath("/users");
   return { success: true };
 }
@@ -1058,6 +1079,12 @@ export async function updateUserRole(id: string, role: UserRole) {
     data: { role },
     include: { employee: true },
   });
+
+  try {
+    await updateSupabaseAuthMetadata(allowedUser.email, role);
+  } catch (error) {
+    console.error("Failed to update Supabase auth metadata:", error);
+  }
 
   revalidatePath("/users");
   return { success: true };

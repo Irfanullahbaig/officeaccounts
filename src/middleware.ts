@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session-token";
+import { updateSession } from "@/lib/supabase/middleware";
+import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
 import type { UserRole } from "@/types/database";
 
 const PUBLIC_ROUTES = [
@@ -49,6 +51,10 @@ function isPublicRoute(pathname: string) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic = isPublicRoute(pathname);
+
+  if (isSupabaseAuthConfigured()) {
+    await updateSession(request);
+  }
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const session = token ? await verifySessionToken(token) : null;

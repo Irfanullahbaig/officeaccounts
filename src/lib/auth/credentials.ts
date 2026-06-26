@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { isDatabaseConfigured } from "@/lib/db/config";
+import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
+import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 import { ensureDefaultAdmin, logLoginActivity } from "@/lib/auth/bootstrap-admin";
 import { setSessionCookie } from "@/lib/auth/cookies";
 import { authenticateStaticUser } from "@/lib/auth/static-auth";
@@ -60,6 +62,85 @@ async function loginWithStaticUser(
 
   await finalizeLogin(user);
   return { ok: true, role: user.role };
+}
+
+async function loginWithSupabase(
+  email: string,
+  password: string,
+  portal: "staff" | "director"
+): Promise<LoginResult | null> {
+  if (!isSupabaseAuthConfigured() || !isDatabaseConfigured()) return null;
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const supabase = await createSupabaseClient();
+  const { error: authError } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password,
+  });
+
+  if (authError) {
+    if (authError.message.toLowerCase().includes("invalid login credentials")) {
+      return null;
+    }
+    console.error("Supabase sign-in error:", authError);
+    return { ok: false, error: "Unable to sign in. Please try again.", status: 500 };
+  }
+
+  try {
+    const count = await prisma.allowedUser.count();
+    if (count === 0) {
+      await ensureDefaultAdmin();
+    }
+  } catch (error) {
+    console.error("Database bootstrap failed:", error);
+    await supabase.auth.signOut();
+    return { ok: false, error: "Cannot connect to database.", status: 503 };
+  }
+
+  const allowedUser = await prisma.allowedUser.findUnique({
+    where: { email: normalizedEmail },
+    include: { employee: true },
+  });
+
+  if (!allowedUser || allowedUser.status !== "active") {
+    await supabase.auth.signOut();
+    await logLoginActivity(normalizedEmail, false, ACCESS_DENIED_MESSAGE);
+    return { ok: false, error: ACCESS_DENIED_MESSAGE, status: 401 };
+  }
+
+  if (portal === "staff" && allowedUser.role === "director") {
+    await supabase.auth.signOut();
+    await logLoginActivity(allowedUser.email, false, "Director attempted staff login");
+    return {
+      ok: false,
+      error: `Directors must sign in through the Director Portal at ${DIRECTOR_PORTAL_LOGIN}`,
+      status: 403,
+    };
+  }
+
+  if (portal === "director" && allowedUser.role !== "director") {
+    await supabase.auth.signOut();
+    await logLoginActivity(allowedUser.email, false, DIRECTOR_ACCESS_DENIED_MESSAGE);
+    return { ok: false, error: DIRECTOR_ACCESS_DENIED_MESSAGE, status: 401 };
+  }
+
+  await logLoginActivity(allowedUser.email, true);
+  await prisma.allowedUser
+    .update({
+      where: { id: allowedUser.id },
+      data: { lastLoginAt: new Date() },
+    })
+    .catch(() => undefined);
+
+  await finalizeLogin({
+    id: allowedUser.id,
+    email: allowedUser.email,
+    role: allowedUser.role as UserRole,
+    employeeId: allowedUser.employeeId,
+    fullName: allowedUser.employee?.fullName ?? null,
+  });
+
+  return { ok: true, role: allowedUser.role as UserRole };
 }
 
 async function loginWithDatabase(
@@ -134,11 +215,17 @@ async function performLogin(
   portal: "staff" | "director"
 ): Promise<LoginResult> {
   try {
+    if (isSupabaseAuthConfigured() && isDatabaseConfigured()) {
+      const supabaseResult = await loginWithSupabase(email, password, portal);
+      if (supabaseResult?.ok) return supabaseResult;
+      if (supabaseResult && !supabaseResult.ok) return supabaseResult;
+    }
+
     const staticResult = await loginWithStaticUser(email, password, portal);
     if (staticResult?.ok) return staticResult;
     if (staticResult && !staticResult.ok) return staticResult;
 
-    if (isDatabaseConfigured()) {
+    if (isDatabaseConfigured() && !isSupabaseAuthConfigured()) {
       const dbResult = await loginWithDatabase(email, password, portal);
       if (dbResult?.ok) return dbResult;
       if (dbResult && !dbResult.ok) return dbResult;

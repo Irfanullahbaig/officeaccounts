@@ -5,11 +5,26 @@ import {
   DEFAULT_ADMIN_EMAIL,
   DEFAULT_ADMIN_PASSWORD,
 } from "@/lib/auth/admin-credentials";
+import { upsertSupabaseAuthUser } from "@/lib/auth/supabase-users";
+import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
 
 export { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD, getDefaultAdminCredentials };
 
 export async function ensureDefaultAdmin() {
   await ensureDefaultAdminOnClient(prisma);
+
+  if (isSupabaseAuthConfigured()) {
+    const { email, password } = getDefaultAdminCredentials();
+    try {
+      await upsertSupabaseAuthUser({
+        email,
+        password,
+        role: "super_admin",
+      });
+    } catch (error) {
+      console.error("Failed to sync default admin to Supabase Auth:", error);
+    }
+  }
 }
 
 export async function logLoginActivity(
