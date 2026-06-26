@@ -31,7 +31,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { AuthUser } from "@/types/database";
-import { logout } from "@/lib/auth/login";
 
 const navItems = [
   { title: "Overview", href: "/director/dashboard", icon: LayoutDashboard },
@@ -47,7 +46,7 @@ function DirectorSidebar({ user }: { user: AuthUser }) {
   const router = useRouter();
 
   async function handleLogout() {
-    await logout();
+    await fetch("/api/auth/logout", { method: "POST" });
     router.push("/director/login");
     router.refresh();
   }

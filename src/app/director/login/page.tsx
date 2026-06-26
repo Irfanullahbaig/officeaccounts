@@ -13,7 +13,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, Loader2 } from "lucide-react";
 import { DIRECTOR_ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
-import { loginDirector } from "@/lib/auth/login";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -44,20 +43,35 @@ function DirectorLoginContent() {
     setLoading(true);
     setError(null);
 
-    const result = await loginDirector(data.email, data.password);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          portal: "director",
+        }),
+      });
 
-    if (!result.ok) {
-      setError(
-        result.error === DIRECTOR_ACCESS_DENIED_MESSAGE
-          ? DIRECTOR_ACCESS_DENIED_MESSAGE
-          : result.error
-      );
-      setLoading(false);
-      return;
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(
+          result.error === DIRECTOR_ACCESS_DENIED_MESSAGE
+            ? DIRECTOR_ACCESS_DENIED_MESSAGE
+            : result.error ?? "Login failed."
+        );
+        setLoading(false);
+        return;
+      }
+
+      router.push("/director/dashboard");
+      router.refresh();
+    } catch {
+      setError("Network error. Please check your connection and try again.");
     }
 
-    router.push("/director/dashboard");
-    router.refresh();
     setLoading(false);
   }
 

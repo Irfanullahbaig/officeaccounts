@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = [
   "/access-denied",
   "/api/setup",
   "/api/health",
+  "/api/auth",
   "/director/login",
 ];
 

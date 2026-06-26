@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth/permissions";
-import { loginStaff } from "@/lib/auth/login";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid company email"),
@@ -36,24 +35,41 @@ function LoginPageContent() {
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "admin@northnine.pk", password: "N9Accounts@123" },
   });
 
   async function onSubmit(data: LoginForm) {
     setLoading(true);
     setError(null);
 
-    const result = await loginStaff(data.email, data.password);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          portal: "staff",
+        }),
+      });
 
-    if (!result.ok) {
-      setError(result.error === ACCESS_DENIED_MESSAGE ? ACCESS_DENIED_MESSAGE : result.error);
-      setLoading(false);
-      return;
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(
+          result.error === ACCESS_DENIED_MESSAGE ? ACCESS_DENIED_MESSAGE : result.error ?? "Login failed."
+        );
+        setLoading(false);
+        return;
+      }
+
+      const dest = result.role === "employee" ? "/my" : "/dashboard";
+      router.push(dest);
+      router.refresh();
+    } catch {
+      setError("Network error. Please check your connection and try again.");
     }
 
-    const dest = result.role === "employee" ? "/my" : "/dashboard";
-    router.push(dest);
-    router.refresh();
     setLoading(false);
   }
 
@@ -114,7 +130,7 @@ function LoginPageContent() {
               </Button>
             </form>
             <p className="text-xs text-muted-foreground text-center mt-6">
-              No public registration. Contact your Super Admin for access.
+              First time? Default admin: admin@northnine.pk / N9Accounts@123
             </p>
             <p className="text-xs text-muted-foreground text-center mt-2">
               Board director?{" "}

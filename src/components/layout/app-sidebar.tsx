@@ -35,7 +35,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { AuthUser } from "@/types/database";
 import { ROLE_LABELS, isFinance, isAdmin } from "@/lib/auth/permissions";
-import { logout } from "@/lib/auth/login";
 
 const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["super_admin", "finance_manager"] },
@@ -62,7 +61,7 @@ function AppSidebar({ user }: { user: AuthUser }) {
   const visibleNav = mainNav.filter((item) => item.roles.includes(user.role));
 
   async function handleLogout() {
-    await logout();
+    await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
   }
