@@ -13,6 +13,7 @@ import Link from "next/link";
 import type { Employee } from "@/types/database";
 import { formatCurrency, cnStatusColor } from "@/lib/utils/format";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
+import { getEmployeeStatusLabel } from "@/lib/employees/status";
 import { EditEmployeeDialog } from "@/components/employees/edit-employee-dialog";
 
 export function EmployeesTable({
@@ -62,7 +63,7 @@ export function EmployeesTable({
               <TableCell>{ROLE_LABELS[emp.role]}</TableCell>
               <TableCell>
                 <Badge variant="secondary" className={cnStatusColor(emp.status)}>
-                  {emp.status}
+                  {getEmployeeStatusLabel(emp.status)}
                 </Badge>
               </TableCell>
               {!readOnly && (

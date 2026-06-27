@@ -11,6 +11,13 @@ async function main() {
     { key: "session_timeout_minutes", value: JSON.stringify(480) },
     { key: "default_loan_interest_type", value: JSON.stringify("daily_diminishing") },
     { key: "two_factor_required", value: JSON.stringify(false) },
+    {
+      key: "earnings_active_period",
+      value: JSON.stringify({
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear(),
+      }),
+    },
   ];
 
   for (const s of settings) {

@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { resolveNextEmployeeCode } from "@/lib/employees/code";
+import {
+  EARNINGS_PERIOD_SETTING_KEY,
+  getCurrentCalendarPeriod,
+  parseEarningsPeriod,
+  type EarningsPeriod,
+} from "@/lib/earnings/period";
 import { requireRole, createAuditLog, getCurrentUser } from "@/lib/auth/session";
 import {
   deleteSupabaseAuthUser,
@@ -32,11 +39,16 @@ const PRINCIPAL_TOLERANCE = 0.01;
 type FinanceTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 export type ActionResult =
-  | { success: true }
+  | { success: true; employeeCode?: string }
   | { success: false; error: string };
 
+export async function getNextEmployeeCode(): Promise<string> {
+  await requireRole(["super_admin", "finance_manager"]);
+  assertDatabaseConfigured();
+  return resolveNextEmployeeCode(prisma);
+}
+
 export async function createEmployee(data: {
-  employee_code: string;
   full_name: string;
   email: string;
   phone?: string;
@@ -45,6 +57,7 @@ export async function createEmployee(data: {
   joining_date: string;
   base_salary: number;
   role: UserRole;
+  status?: "active" | "inactive" | "terminated" | "on_leave";
 }): Promise<ActionResult> {
   try {
     await requireRole(["super_admin", "finance_manager"]);
@@ -62,19 +75,22 @@ export async function createEmployee(data: {
 
     const user = await getCurrentUser();
 
-    const employee = await prisma.employee.create({
-      data: {
-        employeeCode: data.employee_code.trim(),
-        fullName: data.full_name.trim(),
-        email: data.email.toLowerCase().trim(),
-        phone: data.phone?.trim() || undefined,
-        department: data.department?.trim() || undefined,
-        designation: data.designation?.trim() || undefined,
-        joiningDate,
-        baseSalary,
-        role: data.role,
-        status: "active",
-      },
+    const employee = await prisma.$transaction(async (tx) => {
+      const employeeCode = await resolveNextEmployeeCode(tx);
+      return tx.employee.create({
+        data: {
+          employeeCode,
+          fullName: data.full_name.trim(),
+          email: data.email.toLowerCase().trim(),
+          phone: data.phone?.trim() || undefined,
+          department: data.department?.trim() || undefined,
+          designation: data.designation?.trim() || undefined,
+          joiningDate,
+          baseSalary,
+          role: data.role,
+          status: data.status ?? "active",
+        },
+      });
     });
 
     await createAuditLog({
@@ -86,7 +102,7 @@ export async function createEmployee(data: {
     });
 
     revalidatePath("/employees");
-    return { success: true };
+    return { success: true, employeeCode: employee.employeeCode };
   } catch (error) {
     console.error("createEmployee failed:", error);
     return { success: false, error: formatDatabaseError(error) };
@@ -1110,6 +1126,28 @@ export async function getIncomeEntryDetails(id: string) {
       },
     },
   });
+}
+
+export async function getEarningsActivePeriod(): Promise<EarningsPeriod> {
+  await requireRole(["super_admin", "finance_manager"]);
+  const row = await prisma.systemSetting.findUnique({
+    where: { key: EARNINGS_PERIOD_SETTING_KEY },
+  });
+  return parseEarningsPeriod(row?.value) ?? getCurrentCalendarPeriod();
+}
+
+export async function startNewEarningsMonth(): Promise<EarningsPeriod> {
+  await requireRole(["super_admin", "finance_manager"]);
+  const period = getCurrentCalendarPeriod();
+
+  await prisma.systemSetting.upsert({
+    where: { key: EARNINGS_PERIOD_SETTING_KEY },
+    create: { key: EARNINGS_PERIOD_SETTING_KEY, value: JSON.stringify(period) },
+    update: { value: JSON.stringify(period) },
+  });
+
+  revalidatePath("/revenue");
+  return period;
 }
 
 export async function getActiveEmployees() {

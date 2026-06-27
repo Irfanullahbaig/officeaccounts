@@ -23,6 +23,7 @@ import { deleteEmployee, updateEmployee } from "@/lib/actions/finance";
 import { toast } from "sonner";
 import type { Employee, UserRole } from "@/types/database";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
+import { EMPLOYEE_STATUS_OPTIONS } from "@/lib/employees/status";
 
 const schema = z.object({
   employee_code: z.string().min(1),
@@ -120,7 +121,7 @@ export function EditEmployeeDialog({ employee }: { employee: Employee }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Employee ID</Label>
-              <Input {...form.register("employee_code")} />
+              <Input {...form.register("employee_code")} readOnly className="font-mono bg-muted" />
             </div>
             <div className="space-y-2">
               <Label>Full Name</Label>
@@ -147,14 +148,13 @@ export function EditEmployeeDialog({ employee }: { employee: Employee }) {
               <Input type="date" {...form.register("joining_date")} />
             </div>
             <div className="space-y-2">
-              <Label>Status</Label>
+              <Label>Employment Status</Label>
               <Select value={form.watch("status")} onValueChange={(v) => v && form.setValue("status", v as FormData["status"])}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="on_leave">On Leave</SelectItem>
-                  <SelectItem value="terminated">Terminated</SelectItem>
+                  {EMPLOYEE_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,11 +15,11 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { createEmployee } from "@/lib/actions/finance";
+import { createEmployee, getNextEmployeeCode } from "@/lib/actions/finance";
+import { EMPLOYEE_STATUS_OPTIONS } from "@/lib/employees/status";
 import { toast } from "sonner";
 
 const schema = z.object({
-  employee_code: z.string().min(1, "Required"),
   full_name: z.string().min(2, "Required"),
   email: z.string().email("Invalid email"),
   phone: z.string().optional(),
@@ -28,22 +28,36 @@ const schema = z.object({
   joining_date: z.string().min(1, "Required"),
   base_salary: z.number().min(0),
   role: z.enum(["super_admin", "finance_manager", "employee"]),
+  status: z.enum(["active", "inactive", "terminated", "on_leave"]),
 });
 
 type FormData = z.infer<typeof schema>;
 
+const defaultFormValues: FormData = {
+  role: "employee",
+  status: "active",
+  base_salary: 0,
+  joining_date: new Date().toISOString().split("T")[0],
+  full_name: "",
+  email: "",
+};
+
 export function AddEmployeeDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [nextCode, setNextCode] = useState("N9-1001");
   const router = useRouter();
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      role: "employee",
-      base_salary: 0,
-      joining_date: new Date().toISOString().split("T")[0],
-    },
+    defaultValues: defaultFormValues,
   });
+
+  useEffect(() => {
+    if (!open) return;
+    getNextEmployeeCode()
+      .then(setNextCode)
+      .catch(() => toast.error("Failed to load next employee ID"));
+  }, [open]);
 
   async function onSubmit(data: FormData) {
     setLoading(true);
@@ -53,11 +67,10 @@ export function AddEmployeeDialog() {
         toast.error(result.error);
         return;
       }
-      toast.success("Employee added successfully");
+      toast.success(`Employee ${result.employeeCode ?? nextCode} added successfully`);
       setOpen(false);
       form.reset({
-        role: "employee",
-        base_salary: 0,
+        ...defaultFormValues,
         joining_date: new Date().toISOString().split("T")[0],
       });
       router.refresh();
@@ -79,7 +92,8 @@ export function AddEmployeeDialog() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Employee ID</Label>
-              <Input {...form.register("employee_code")} placeholder="EMP-001" />
+              <Input value={nextCode} readOnly className="font-mono bg-muted" />
+              <p className="text-xs text-muted-foreground">Auto-assigned (N9-1001, N9-1002…)</p>
             </div>
             <div className="space-y-2">
               <Label>Full Name</Label>
@@ -109,7 +123,21 @@ export function AddEmployeeDialog() {
               <Label>Base Salary</Label>
               <Input type="number" {...form.register("base_salary", { valueAsNumber: true })} />
             </div>
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2">
+              <Label>Employment Status</Label>
+              <Select
+                value={form.watch("status")}
+                onValueChange={(v) => v && form.setValue("status", v as FormData["status"])}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {EMPLOYEE_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Role</Label>
               <Select
                 value={form.watch("role")}

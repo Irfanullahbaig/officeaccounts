@@ -33,6 +33,8 @@ export function cnStatusColor(status: string): string {
     cancelled: "bg-red-500/10 text-red-600 dark:text-red-400",
     defaulted: "bg-red-500/10 text-red-600 dark:text-red-400",
     inactive: "bg-muted text-muted-foreground",
+    on_leave: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    terminated: "bg-red-500/10 text-red-600 dark:text-red-400",
     approved: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   };
   return map[status] ?? "bg-muted text-muted-foreground";

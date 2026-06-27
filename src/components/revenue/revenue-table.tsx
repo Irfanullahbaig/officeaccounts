@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createIncomeEntry, getActiveEmployees } from "@/lib/actions/finance";
+import type { EarningsPeriod } from "@/lib/earnings/period";
 import { toast } from "sonner";
 import { IncomeLoanPaymentFields } from "@/components/revenue/income-loan-payment-fields";
 import {
@@ -42,7 +43,23 @@ const schema = z.object({
 
 type FormData = z.input<typeof schema>;
 
-export function AddRevenueDialog() {
+function defaultPaymentDate(period?: EarningsPeriod): string {
+  const now = new Date();
+  if (
+    period &&
+    now.getMonth() + 1 === period.month &&
+    now.getFullYear() === period.year
+  ) {
+    return now.toISOString().split("T")[0];
+  }
+  if (period) {
+    const day = Math.min(now.getDate(), new Date(period.year, period.month, 0).getDate());
+    return new Date(period.year, period.month - 1, day).toISOString().split("T")[0];
+  }
+  return now.toISOString().split("T")[0];
+}
+
+export function AddRevenueDialog({ defaultPeriod }: { defaultPeriod?: EarningsPeriod }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<Array<{ id: string; fullName: string }>>([]);
@@ -50,7 +67,7 @@ export function AddRevenueDialog() {
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      payment_received_date: new Date().toISOString().split("T")[0],
+      payment_received_date: defaultPaymentDate(defaultPeriod),
       currency: "PKR",
       savings_contribution: 0,
       loan_payment: 0,
@@ -62,10 +79,11 @@ export function AddRevenueDialog() {
 
   useEffect(() => {
     if (!open) return;
+    form.setValue("payment_received_date", defaultPaymentDate(defaultPeriod));
     getActiveEmployees()
       .then((rows) => setEmployees(rows.map((row) => ({ id: row.id, fullName: row.fullName }))))
       .catch(() => toast.error("Failed to load employee list"));
-  }, [open]);
+  }, [open, defaultPeriod, form]);
 
   const employeeId = form.watch("employee_id");
   const targetLoanId = form.watch("target_loan_id");
