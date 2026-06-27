@@ -4,6 +4,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ensureDatabaseUrlForGenerate,
+  ensureDirectDatabaseUrlForGenerate,
   normalizeDatabaseEnv,
 } from "./validate-env.mjs";
 
@@ -46,6 +47,7 @@ function syncSchemaProvider() {
 }
 
 ensureDatabaseUrlForGenerate();
+ensureDirectDatabaseUrlForGenerate();
 
 // Vercel: schema is committed as postgresql — skip local provider toggling.
 if (process.env.VERCEL === "1") {

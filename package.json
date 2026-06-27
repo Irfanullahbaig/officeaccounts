@@ -2,6 +2,9 @@
   "name": "n9accounts",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node scripts/prisma-generate.mjs && next dev",
     "build": "next build",

@@ -4,6 +4,9 @@ import { loadEnvFiles } from "./load-env.mjs";
 export const PRISMA_GENERATE_PLACEHOLDER_URL =
   "postgresql://build:build@127.0.0.1:5432/build?schema=public";
 
+export const PRISMA_GENERATE_PLACEHOLDER_DIRECT_URL =
+  "postgresql://build:build@127.0.0.1:5432/build?schema=public";
+
 const DATABASE_URL_ALIASES = [
   "POSTGRES_PRISMA_URL",
   "SUPABASE_DB_URL",
@@ -215,7 +218,10 @@ export function isPostgresUrl(url) {
 }
 
 export function ensureDatabaseUrlForGenerate() {
+  normalizeDatabaseEnv();
+
   if (isUsableDatabaseUrl(process.env.DATABASE_URL)) {
+    normalizeDirectDatabaseEnv();
     return process.env.DATABASE_URL;
   }
 
@@ -223,7 +229,20 @@ export function ensureDatabaseUrlForGenerate() {
   console.warn(
     "\n⚠️  DATABASE_URL is not set. Using a placeholder for prisma generate only.\n"
   );
+  ensureDirectDatabaseUrlForGenerate();
   return process.env.DATABASE_URL;
+}
+
+export function ensureDirectDatabaseUrlForGenerate() {
+  normalizeDirectDatabaseEnv();
+
+  const unpooled = trimUrl(process.env.DATABASE_URL_UNPOOLED);
+  if (isUsableDatabaseUrl(unpooled)) {
+    return unpooled;
+  }
+
+  process.env.DATABASE_URL_UNPOOLED = PRISMA_GENERATE_PLACEHOLDER_DIRECT_URL;
+  return process.env.DATABASE_URL_UNPOOLED;
 }
 
 if (isBuild) {
