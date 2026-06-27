@@ -6,6 +6,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   XAxis,
@@ -21,8 +22,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { formatCurrency } from "@/lib/utils/format";
 
 const revenueConfig = {
-  revenue: { label: "Revenue", color: "hsl(var(--chart-1))" },
-  expenses: { label: "Company Share", color: "hsl(var(--chart-2))" },
+  revenue: { label: "Company Share", color: "hsl(var(--chart-1))" },
+  expenses: { label: "Expenses", color: "hsl(var(--chart-2))" },
 } satisfies ChartConfig;
 
 const payrollConfig = {
@@ -34,7 +35,7 @@ const loanConfig = {
 } satisfies ChartConfig;
 
 const profitConfig = {
-  profit: { label: "Net Profit", color: "hsl(var(--chart-5))" },
+  net: { label: "Net P&L", color: "hsl(var(--chart-5))" },
 } satisfies ChartConfig;
 
 const savingsConfig = {
@@ -45,7 +46,7 @@ interface DashboardChartsProps {
   revenueVsExpenses: { month: string; revenue: number; expenses: number }[];
   payrollTrend: { month: string; payroll: number }[];
   loanCollectionTrend: { month: string; collections: number }[];
-  profitLossTrend: { month: string; profit: number }[];
+  profitLossTrend: { month: string; net: number }[];
   savingsTrend: { month: string; savings: number }[];
 }
 
@@ -60,8 +61,8 @@ export function DashboardCharts({
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Revenue vs Expenses</CardTitle>
-          <CardDescription>Revenue vs company share by month</CardDescription>
+          <CardTitle>Company Share vs Expenses</CardTitle>
+          <CardDescription>Monthly company income compared to operating expenses</CardDescription>
         </CardHeader>
         <CardContent>
           <ChartContainer config={revenueConfig} className="h-[250px] w-full">
@@ -69,9 +70,42 @@ export function DashboardCharts({
               <CartesianGrid vertical={false} />
               <XAxis dataKey="month" tickLine={false} axisLine={false} />
               <YAxis tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000}k`} />
-              <ChartTooltip content={<ChartTooltipContent />} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent formatter={(value) => formatCurrency(Number(value))} />
+                }
+              />
               <Bar dataKey="revenue" fill="var(--color-revenue)" radius={4} />
               <Bar dataKey="expenses" fill="var(--color-expenses)" radius={4} />
+            </BarChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profit & Loss by Month</CardTitle>
+          <CardDescription>Green = profit, red = loss (after expenses & commissions)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer config={profitConfig} className="h-[250px] w-full">
+            <BarChart data={profitLossTrend}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} />
+              <YAxis tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000}k`} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent formatter={(value) => formatCurrency(Number(value))} />
+                }
+              />
+              <Bar dataKey="net" radius={4}>
+                {profitLossTrend.map((entry) => (
+                  <Cell
+                    key={entry.month}
+                    fill={entry.net >= 0 ? "hsl(142 76% 36%)" : "hsl(0 72% 51%)"}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ChartContainer>
         </CardContent>
@@ -109,30 +143,6 @@ export function DashboardCharts({
               <ChartTooltip content={<ChartTooltipContent />} />
               <Area type="monotone" dataKey="collections" fill="var(--color-collections)" stroke="var(--color-collections)" fillOpacity={0.3} />
             </AreaChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Net Company Share</CardTitle>
-          <CardDescription>Company share after commissions</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ChartContainer config={profitConfig} className="h-[250px] w-full">
-            <BarChart data={profitLossTrend}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    formatter={(value) => formatCurrency(Number(value))}
-                  />
-                }
-              />
-              <Bar dataKey="profit" fill="var(--color-profit)" radius={4} />
-            </BarChart>
           </ChartContainer>
         </CardContent>
       </Card>

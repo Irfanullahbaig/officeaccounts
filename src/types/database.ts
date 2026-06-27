@@ -183,6 +183,8 @@ export interface DashboardStats {
   totalRevenue: number;
   totalCompanyShare: number;
   totalEmployeeEarnings: number;
+  totalExpenses: number;
+  netProfitLoss: number;
   totalSavings: number;
   totalActiveLoans: number;
   outstandingLoanAmount: number;
