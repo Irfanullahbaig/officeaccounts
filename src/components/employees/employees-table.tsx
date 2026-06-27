@@ -51,7 +51,11 @@ export function EmployeesTable({
                   {emp.employee_code}
                 </Link>
               </TableCell>
-              <TableCell className="font-medium">{emp.full_name}</TableCell>
+              <TableCell className="font-medium">
+                <Link href={`/employees/${emp.id}`} className="hover:underline">
+                  {emp.full_name}
+                </Link>
+              </TableCell>
               <TableCell>{emp.email}</TableCell>
               <TableCell>{emp.department ?? "—"}</TableCell>
               <TableCell>{emp.designation ?? "—"}</TableCell>
