@@ -18,7 +18,12 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import type { Expense, ExpenseCategory } from "@/types/database";
+import { EditExpenseDialog } from "@/components/expenses/edit-expense-dialog";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
+
+function formatCategoryLabel(category: string) {
+  return category.replace(/_/g, " ");
+}
 
 const CATEGORIES: ExpenseCategory[] = [
   "salaries", "office_rent", "marketing", "utilities", "equipment", "software", "miscellaneous",
@@ -68,7 +73,7 @@ export function AddExpenseDialog() {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>
+                  <SelectItem key={c} value={c}>{formatCategoryLabel(c)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -95,15 +100,19 @@ export function ExpenseTable({ expenses }: { expenses: Expense[] }) {
             <TableHead>Amount</TableHead>
             <TableHead>Date</TableHead>
             <TableHead>Notes</TableHead>
+            <TableHead className="w-[60px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {expenses.map((e) => (
             <TableRow key={e.id}>
-              <TableCell className="capitalize font-medium">{e.category.replace("_", " ")}</TableCell>
+              <TableCell className="capitalize font-medium">{formatCategoryLabel(e.category)}</TableCell>
               <TableCell>{formatCurrency(Number(e.amount))}</TableCell>
               <TableCell>{formatDate(e.expense_date)}</TableCell>
               <TableCell className="text-muted-foreground">{e.notes ?? "—"}</TableCell>
+              <TableCell>
+                <EditExpenseDialog expense={e} />
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

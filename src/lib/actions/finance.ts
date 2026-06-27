@@ -1031,6 +1031,70 @@ export async function createExpense(data: {
   return { success: true };
 }
 
+export async function updateExpense(
+  id: string,
+  data: {
+    category: ExpenseCategory;
+    amount: number;
+    expense_date: string;
+    notes?: string;
+  }
+): Promise<ActionResult> {
+  try {
+    await requireRole(["super_admin", "finance_manager"]);
+    const user = await getCurrentUser();
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
+      return { success: false, error: "Expense not found." };
+    }
+
+    const amount = Number(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { success: false, error: "Amount must be a valid number greater than zero." };
+    }
+
+    const expenseDate = new Date(data.expense_date);
+    if (Number.isNaN(expenseDate.getTime())) {
+      return { success: false, error: "Expense date is invalid." };
+    }
+
+    const expense = await prisma.expense.update({
+      where: { id },
+      data: {
+        category: data.category,
+        amount,
+        expenseDate,
+        notes: data.notes?.trim() || null,
+      },
+    });
+
+    await createAuditLog({
+      userEmail: user?.email,
+      action: "UPDATE",
+      entityType: "expense",
+      entityId: expense.id,
+      oldValue: {
+        category: existing.category,
+        amount: existing.amount,
+        expenseDate: existing.expenseDate.toISOString(),
+      },
+      newValue: {
+        category: expense.category,
+        amount: expense.amount,
+        expenseDate: expense.expenseDate.toISOString(),
+      },
+    });
+
+    revalidatePath("/expenses");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (error) {
+    console.error("updateExpense failed:", error);
+    return { success: false, error: formatDatabaseError(error) };
+  }
+}
+
 export async function addAllowedUser(data: {
   email: string;
   role: UserRole;
